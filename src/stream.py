@@ -119,11 +119,7 @@ class Linker:
 	def __init__(self, income, expenses, savings):
 		self.streams = Streams()
 		difference = income.total() + expenses.total() + savings.total()
-		print(income.total())
-		print(expenses.total())
-		print(savings.total())
 		savings.streams.insertByValue(-difference, "Bank Account", "Savings")
-		print(savings.total())
 		self.streams.insertByValue(expenses.total(), expenses.name, income.name)
 		self.streams.insertByValue(savings.total(), savings.name, income.name)
 
