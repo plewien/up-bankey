@@ -1,0 +1,34 @@
+# Options
+options:
+  path:
+    output: results.txt
+  expense-threshold:
+    value: 10
+    percentage: 0.01
+
+# Transaction Collections
+collections:
+  income:
+    name: Income
+    classifiers:
+      tags:
+        - Income : Other Income
+      accounts:
+        - Job 1
+        - Job 2
+  expenses:
+    name: Expenses
+  savings:
+    name: Savings
+    classifiers:
+      accounts: 
+        - Investment Account 1 : Investments
+        - Investment Account 2 : Investments
+        - Savings Account 1 : Savings
+
+# Ignored transactions
+ignore:
+  accounts:
+    - Closed Account
+  tags:
+    - Ignored Transaction
