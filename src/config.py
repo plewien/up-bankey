@@ -41,13 +41,14 @@ class CollectionConfig:
 
     @staticmethod
     def makeSet(l : list):
-        list = []
+        s = set()
         for elem in l:
             if isinstance(elem, dict):
-                list += elem.keys()
+                for k in elem.keys():
+                    s.add(k)
             else:
-                list += elem
-        return set(list)
+                s.add(elem)
+        return s
 
     @staticmethod
     def makeAliases(l : list):
@@ -75,7 +76,6 @@ class Config:
     def __init__(self, path):
         self._config = readYaml(path)
         populateConfigRecursively(self._config, defaultConfig)
-        # print(yaml.dump(self._config))
         self.ignore = IgnoreConfig(self._config['ignore'])
         self.income = CollectionConfig(self._config['collections']['income'])
         self.expense = CollectionConfig(self._config['collections']['expenses'])
@@ -99,7 +99,6 @@ class Config:
         for classifier in classifierOrder:
             classification = classifier(transaction)
             if classification is not TransactionType.Unknown:
-                transaction.type = classification
                 return classification
 
         return TransactionType.Unknown
