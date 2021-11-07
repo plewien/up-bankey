@@ -41,6 +41,10 @@ class Stream:
 		if self.total < 0:
 			self.source, self.target = self.target, self.source
 			self.total = -self.total
+	
+	def isBelowThreshold(self, threshold):
+		return abs(self.total) < threshold
+
 
 class Streams(dict):
 	
@@ -83,6 +87,9 @@ class Streams(dict):
 			self[newKey].target = target
 		del self[oldKey]
 
+	def total(self):
+		return sum([stream.total for stream in self.values()])
+
 
 class TransactionCollection:
 	def __init__(self, config=None, name=None):
@@ -97,10 +104,7 @@ class TransactionCollection:
 		self.streams.insert(transaction, self.config.getAlias(transaction), self.name)
 
 	def total(self):
-		return sum([stream.total for stream in self.streams.values()])
-
-	def totalIf(self, condition):
-		return sum([stream.total for stream in self.streams.values() if condition(stream)])
+		return self.streams.total()
 
 	def applyToStreams(self, apply):
 		return [apply(k, s) for k, s in self.streams.items()]
@@ -158,17 +162,21 @@ class ExpensesCollection(TransactionCollection):
 					print("Warning: Net positive expense found for category %s, review these transactions:" % stream.source)
 					for t in stream.items:
 						print("* %s: %s" % (t.settled_at.date(), t))
-				if abs(stream.total) < self.threshold(stream.target):
-					self.streams.rename(stream, source="Other "+stream.target)
+				self.consolidateSmallExpenses(stream)
 
-	def threshold(self, parent):
-		return 0.05 * abs(self.streams[Streams.makeKey(parent, self.name)].total)
+	def consolidateSmallExpenses(self, stream):
+		parent = stream.target
+		relativeThreshold = self.config.relativeThreshold * self.streams[Streams.makeKey(parent, self.name)].total
+		threshold = max(self.config.absoluteThreshold, relativeThreshold)
+		if stream.isBelowThreshold(threshold):
+			self.groups[parent].streams.rename(stream, source="Other "+parent)
 
 	def round(self):
 		super().round()
 		for parent, group in zip(self.streams.values(), self.groups.values()):
 			group.roundTo(parent.total)
 
+	
 class Linker(TransactionCollection):
 	def __init__(self, income, expenses, savings):
 		self.streams = Streams()

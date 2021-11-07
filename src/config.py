@@ -38,6 +38,8 @@ class CollectionConfig:
         self.accounts = CollectionConfig.makeSet(config['classifiers']['accounts'])
         self.tagAliases: dict = CollectionConfig.makeAliases(config['classifiers']['tags'])
         self.accountAliases: dict = CollectionConfig.makeAliases(config['classifiers']['accounts'])
+        self.absoluteThreshold = config['threshold']['value']
+        self.relativeThreshold = config['threshold']['percentage'] / 100
 
     @staticmethod
     def makeSet(l : list):
@@ -135,26 +137,30 @@ defaultClassifier = {
     'accounts': [],
 }
 
+defaultThresholds = {
+    'value': 0,
+    'percentage': 0
+}
+
 defaultConfig = {
     'options': {
         'path': 'results.txt',
-        'expense-threshold': {
-            'value': 0,
-            'percentage': 0,
-        }
     },
     'collections' : {
         'income': {
             'name' : 'Income',
-            'classifiers' : defaultClassifier
+            'classifiers' : defaultClassifier,
+            'threshold' : defaultThresholds
         },
         'expenses': {
             'name' : 'Expenses',
-            'classifiers' : defaultClassifier
+            'classifiers' : defaultClassifier,
+            'threshold' : defaultThresholds
         },
         'savings': {
             'name' : 'Savings',
-            'classifiers' : defaultClassifier
+            'classifiers' : defaultClassifier,
+            'threshold' : defaultThresholds
         }
     },
     'ignore': defaultClassifier
