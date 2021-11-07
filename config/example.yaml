@@ -2,9 +2,6 @@
 options:
   path:
     output: results.txt
-  expense-threshold:
-    value: 10
-    percentage: 0.01
 
 # Transaction Collections
 collections:
@@ -18,6 +15,9 @@ collections:
         - Job 2
   expenses:
     name: Expenses
+    threshold:
+      value: 20
+      percentage: 10
   savings:
     name: Savings
     classifiers:
