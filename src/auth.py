@@ -1,6 +1,6 @@
 from upbankapi import Client, NotAuthorizedException
 
-from stream import Expenses, Linker, TransactionCollection
+from stream import ExpensesCollection, Linker, TransactionCollection
 from config import Config, TransactionType
 
 # use the environment variable UP_TOKEN
@@ -24,7 +24,7 @@ transactions = config.filter(transactions)
 
 incomes = TransactionCollection(config.income)
 savings = TransactionCollection(config.savings)
-expenses = Expenses(config.expense)
+expenses = ExpensesCollection(config.expense)
 
 for t in transactions:
     type = config.classify(t)
@@ -44,11 +44,13 @@ for t in transactions:
 expenses.cleanup()
 links = Linker(incomes, expenses, savings)
 
+incomes.round()
+expenses.round()
+savings.round()
+
 # Write the results to file...
 with open('results.txt', 'w') as f:
     print(incomes, file=f)
     print(expenses, file=f)
     print(savings, file=f)
     print(links, file=f)
-   
-
