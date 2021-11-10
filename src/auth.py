@@ -2,6 +2,7 @@ from upbankapi import Client, NotAuthorizedException
 
 from stream import ExpensesCollection, Linker, TransactionCollection
 from config import Config, TransactionType
+from transaction import TransactionFactory
 
 # use the environment variable UP_TOKEN
 client = Client()
@@ -20,13 +21,14 @@ transactions = client.transactions(limit=4000)
 
 # Filter misleading transactions
 config = Config("config/personal.yaml")
+factory = TransactionFactory()
 transactions = config.filter(transactions)
 
 incomes = TransactionCollection(config.income)
 savings = TransactionCollection(config.savings)
 expenses = ExpensesCollection(config.expense)
 
-for t in transactions:
+for t in factory.to_generic_transaction_list(transactions):
     type = config.classify(t)
     if type is TransactionType.Income:        incomes.insert(t)
     elif type is TransactionType.Expense:     expenses.insert(t)
@@ -36,10 +38,7 @@ for t in transactions:
             message = "Ignoring transaction"
         else:
             message = "Unmatched transaction found"
-        if t.settled_at is None:
-            print("%s: %s" % (message, t))
-        else:
-            print("%s for %s: %s" % (message, t.settled_at.date(), t))
+        print("%s for %s" % (message, t))
 
 expenses.cleanup()
 links = Linker(incomes, expenses, savings)

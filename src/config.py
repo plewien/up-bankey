@@ -1,7 +1,7 @@
 import yaml
 import itertools
 from enum import Enum
-from upbankapi.models import Transaction
+from transaction import GenericTransaction
 
 def readYaml(filePath : str):
     with open(filePath, 'r') as f:
@@ -15,7 +15,7 @@ def populateConfigRecursively(input: dict, default):
         else:
             input.setdefault(k, default[k])
 
-def isInternalTransaction(transaction: Transaction):
+def isInternalTransaction(transaction: GenericTransaction):
     actions = ['Cover', 'Transfer', 'Forward', 'Quick save transfer']
     directions = ['from', 'to']
     internalDescriptions = ['%s %s ' % (a, d) for a, d in itertools.product(actions, directions)]
@@ -57,7 +57,7 @@ class CollectionConfig:
         listOfAliases = filter(lambda e: isinstance(e, dict), l)
         return {k:v for element in listOfAliases for (k,v) in element.items()}
         
-    def getAlias(self, transaction : Transaction):
+    def getAlias(self, transaction : GenericTransaction):
         for tag in transaction.tags:
             alias = self.tagAliases.get(tag, None)
             if alias is not None:
@@ -89,7 +89,7 @@ class Config:
     def filter(self, transactions):
         return filter(lambda t: not isInternalTransaction(t), transactions)
 
-    def classify(self, transaction : Transaction):
+    def classify(self, transaction : GenericTransaction):
 
         # TODO: Order of classification should be taken from the config
         classifierOrder = {
@@ -105,7 +105,7 @@ class Config:
 
         return TransactionType.Unknown
         
-    def classifyByTag(self, transaction : Transaction):
+    def classifyByTag(self, transaction : GenericTransaction):
         tags = set(transaction.tags)
         if tags.intersection(self.ignore.tags):            return TransactionType.Ignore
         if tags.intersection(self.income.tags):            return TransactionType.Income
@@ -113,7 +113,7 @@ class Config:
         if tags.intersection(self.savings.tags):           return TransactionType.Savings
         return TransactionType.Unknown
     
-    def classifyByAccount(self, transaction : Transaction):
+    def classifyByAccount(self, transaction : GenericTransaction):
         account = transaction.description
         if account in self.ignore.accounts:     return TransactionType.Ignore
         if account in self.income.accounts:     return TransactionType.Income
@@ -121,13 +121,13 @@ class Config:
         if account in self.savings.accounts:    return TransactionType.Savings
         return TransactionType.Unknown
     
-    def classifyByCategoryPresence(self, transaction : Transaction):
+    def classifyByCategoryPresence(self, transaction : GenericTransaction):
         if transaction.category:
             return TransactionType.Expense
         return TransactionType.Unknown
 
-    def classifyByPositiveValue(self, transaction : Transaction):
-        if not transaction.pending and transaction.amount > 0:
+    def classifyByPositiveValue(self, transaction : GenericTransaction):
+        if transaction.amount > 0:
             return TransactionType.Income
         return TransactionType.Unknown
         

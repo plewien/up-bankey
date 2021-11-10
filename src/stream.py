@@ -1,4 +1,4 @@
-from upbankapi.models import Transaction
+from transaction import GenericTransaction
 import math
 
 
@@ -8,7 +8,7 @@ def toSankeyMatic(source, target, amount):
 
 class Stream:
 
-	def __init__(self, source: str, target: str, transaction: Transaction=None):
+	def __init__(self, source: str, target: str, transaction: GenericTransaction=None):
 		self.source = source
 		self.target = target
 		self.items = [transaction] if transaction else []
@@ -20,7 +20,7 @@ class Stream:
 		else:
 			return toSankeyMatic(self.target, self.source, -self.total)
 
-	def accumulate(self, transaction : Transaction):
+	def accumulate(self, transaction : GenericTransaction):
 		self.items.append(transaction)
 		self.total += transaction.amount
 
@@ -100,7 +100,7 @@ class TransactionCollection:
 	def __str__(self):
 		return "\n".join([str(stream) for stream in self.streams.values()])
 
-	def insert(self, transaction : Transaction):
+	def insert(self, transaction : GenericTransaction):
 		self.streams.insert(transaction, self.config.getAlias(transaction), self.name)
 
 	def total(self):
@@ -148,7 +148,7 @@ class ExpensesCollection(TransactionCollection):
 		strings += [super().__str__()]  # join the parent categories
 		return "\n".join(strings)
 
-	def insert(self, transaction : Transaction):
+	def insert(self, transaction : GenericTransaction):
 		group = transaction.parentCategory
 		self.streams.insert(transaction, group, self.name)
 		if group not in self.groups:
