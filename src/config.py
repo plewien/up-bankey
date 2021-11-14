@@ -2,6 +2,9 @@ import yaml
 import itertools
 from enum import Enum
 from transaction import GenericTransaction
+from datetime import datetime
+from dateutil import parser
+from dateutil.relativedelta import relativedelta
 
 def readYaml(filePath : str):
     with open(filePath, 'r') as f:
@@ -22,6 +25,15 @@ def isInternalTransaction(transaction: GenericTransaction):
     internalDescriptions += ['Round Up', 'Bonus Payment']
     return transaction.description.startswith(tuple(internalDescriptions))
 
+def toDateTime(input: str):
+    if input is None:
+        return None
+    if input == "today" or input == "now":
+        return datetime.now()
+    if input.endswith("ago"):
+        value, unit, _ = input.split()  # assumes format '1 year ago', etc
+        return datetime.now() - relativedelta(**{unit: int(value)})
+    return parser.parse(input)
 
 class TransactionType(Enum):
     Unknown     = -2
@@ -76,15 +88,18 @@ class IgnoreConfig(CollectionConfig):
 
 class Config:
     def __init__(self, path):
-        self._config = readYaml(path)
-        populateConfigRecursively(self._config, defaultConfig)
-        self.ignore = IgnoreConfig(self._config['ignore'])
-        self.income = CollectionConfig(self._config['collections']['income'])
-        self.expense = CollectionConfig(self._config['collections']['expenses'])
-        self.savings = CollectionConfig(self._config['collections']['savings'])
+        config = readYaml(path)
+        populateConfigRecursively(config, defaultConfig)
+        self.since = toDateTime(config['options']['dates']['since'])
+        self.until = toDateTime(config['options']['dates']['until'])
+        self.limit = config['options']['sources']['up-api']['limit']
+        self.ignore = IgnoreConfig(config['ignore'])
+        self.income = CollectionConfig(config['collections']['income'])
+        self.expense = CollectionConfig(config['collections']['expenses'])
+        self.savings = CollectionConfig(config['collections']['savings'])
+        self._config = config
 
         self.income.accounts.add("Interest")
-        yaml.dump(self._config)
             
     def filter(self, transactions):
         return filter(lambda t: not isInternalTransaction(t), transactions)
@@ -137,32 +152,46 @@ defaultClassifier = {
     'accounts': [],
 }
 
-defaultThresholds = {
+defaultThreshold = {
     'value': 0,
     'percentage': 0
 }
 
 defaultConfig = {
     'options': {
-        'path': 'results.txt',
+        'output': 'results.txt',
+        'dates': {
+            'since' : '1 year ago',
+            'until': 'today'
+        },
+        'sources': {
+            'up-api' : {
+                'token' : 'UP_TOKEN',
+                'limit' : 4000,
+            }
+        }
     },
     'collections' : {
         'income': {
             'name' : 'Income',
             'classifiers' : defaultClassifier,
-            'threshold' : defaultThresholds
+            'threshold' : defaultThreshold
         },
         'expenses': {
             'name' : 'Expenses',
             'classifiers' : defaultClassifier,
-            'threshold' : defaultThresholds
+            'threshold' : defaultThreshold
         },
         'savings': {
             'name' : 'Savings',
             'classifiers' : defaultClassifier,
-            'threshold' : defaultThresholds
+            'threshold' : defaultThreshold
         }
     },
     'ignore': defaultClassifier
-    ,
 }
+
+
+if __name__ == "__main__":
+    config = Config("config/example.yaml")
+    print(yaml.dump(config._config))

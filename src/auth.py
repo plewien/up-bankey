@@ -4,8 +4,8 @@ from stream import ExpensesCollection, Linker, TransactionCollection
 from config import Config, TransactionType
 from transaction import TransactionFactory
 
-# use the environment variable UP_TOKEN
 client = Client()
+config = Config("config/personal.yaml")
 
 # check the token is valid
 try:
@@ -16,11 +16,9 @@ except NotAuthorizedException:
     exit()
 
 # get transactions between dates
-accounts = client.accounts()
-transactions = client.transactions(limit=4000)
+transactions = client.transactions(limit=config.limit, since=config.since, until=config.until)
 
 # Filter misleading transactions
-config = Config("config/personal.yaml")
 factory = TransactionFactory()
 transactions = config.filter(transactions)
 

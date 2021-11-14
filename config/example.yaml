@@ -1,7 +1,13 @@
 # Options
 options:
-  path:
-    output: results.txt
+  output: results.txt
+  dates:
+    # since: 1/1/2021
+    until: today
+  sources:
+    up-api:
+      token: UP_TOKEN
+      limit: 4000
 
 # Transaction Collections
 collections:
