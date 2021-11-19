@@ -1,7 +1,8 @@
 from upbankapi import Client, NotAuthorizedException
 
-from stream import ExpensesCollection, Linker, TransactionCollection
+from category import Categories
 from config import Config, TransactionType
+from stream import ExpensesCollection, TransactionCollection, Linker
 from transaction import TransactionFactory
 
 client = Client()
@@ -9,22 +10,23 @@ config = Config("config/personal.yaml")
 
 # check the token is valid
 try:
-    user_id = client.ping()
-    print("Authorized: " + user_id)
+    print("Authorized: " + client.ping())
 except NotAuthorizedException:
     print("The token is invalid")
     exit()
 
 # get transactions between dates
 transactions = client.transactions(limit=config.limit, since=config.since, until=config.until)
-
-# Filter misleading transactions
-factory = TransactionFactory()
 transactions = config.filter(transactions)
 
+# Get data for categories
+category_data = client.api("/categories")
+categories = Categories(client, category_data)
+
+factory = TransactionFactory()
 incomes = TransactionCollection(config.income)
 savings = TransactionCollection(config.savings)
-expenses = ExpensesCollection(config.expense)
+expenses = ExpensesCollection(config.expense, categories)
 
 for t in factory.to_generic_transaction_list(transactions):
     type = config.classify(t)

@@ -1,4 +1,6 @@
+from category import Categories
 from transaction import GenericTransaction
+
 import math
 
 
@@ -11,7 +13,7 @@ class Stream:
 	def __init__(self, source: str, target: str, transaction: GenericTransaction=None):
 		self.source = source
 		self.target = target
-		self.items = [transaction] if transaction else []
+		self.transactions = [transaction] if transaction else []
 		self.total = transaction.amount if transaction else 0
 
 	def __str__(self):
@@ -21,7 +23,7 @@ class Stream:
 			return toSankeyMatic(self.target, self.source, -self.total)
 
 	def accumulate(self, transaction : GenericTransaction):
-		self.items.append(transaction)
+		self.transactions.append(transaction)
 		self.total += transaction.amount
 
 	def accumulateList(self, transactions : list):
@@ -36,20 +38,22 @@ class Stream:
 			self.total = math.ceil(self.total)
 		else:
 			self.total = math.floor(self.total)
-	
+
 	def simplify(self):
 		if self.total < 0:
 			self.source, self.target = self.target, self.source
 			self.total = -self.total
-	
+
 	def isBelowThreshold(self, threshold):
 		return abs(self.total) < threshold
 
 
 class Streams(dict):
-	
-	def __init__(self, *arg, **kw):
+
+	def __init__(self, translator=None, *arg, **kw):
 		super(Streams, self).__init__(*arg, **kw)
+		self.translator = translator
+		pass
 
 	@staticmethod
 	def makeKey(source, target):
@@ -60,6 +64,8 @@ class Streams(dict):
 		if key in self:
 			self[key].accumulate(transaction)
 		else:
+			source = self.translate(source)
+			target = self.translate(target)
 			self[key] = Stream(source, target, transaction)
 		return self[key]
 
@@ -67,7 +73,7 @@ class Streams(dict):
 		key = Streams.makeKey(source, target)
 		self[key] = Stream(source, target)
 		self[key].accumulateByValue(value)
-	
+
 	def rename(self, stream : Stream, source=None, target=None):
 		oldKey = Streams.makeKey(stream.source, stream.target)
 		if oldKey not in self:
@@ -80,22 +86,28 @@ class Streams(dict):
 		# Insert the new stream into the collection
 		newKey = Streams.makeKey(source, target)
 		if newKey in self:
-			self[newKey].accumulateList(self[oldKey].items)
+			self[newKey].accumulateList(self[oldKey].transactions)
 		else:
 			self[newKey] = self[oldKey]
 			self[newKey].source = source
 			self[newKey].target = target
 		del self[oldKey]
+		pass
 
 	def total(self):
 		return sum([stream.total for stream in self.values()])
 
+	def translate(self, id):
+		if (self.translator is not None) and (id in self.translator):
+			return self.translator[id]
+		return id
+
 
 class TransactionCollection:
-	def __init__(self, config=None, name=None):
+	def __init__(self, config=None, name=None, translator=None):
 		self.name = config.name if config is not None else name
 		self.config = config
-		self.streams = Streams()
+		self.streams = Streams(translator)
 
 	def __str__(self):
 		return "\n".join([str(stream) for stream in self.streams.values()])
@@ -117,7 +129,7 @@ class TransactionCollection:
 		Rounding requires some finesse to ensure the streams balance. Consider a simple example
 		where there's three categories with totals $10.40, $10.30 and $10.30. Using rounding, these
 		each would be valued at $10, for a total of $30. But the total for the parent category would
-		be $31, off by a dollar. To round these properly, the first category should round to $11 and 
+		be $31, off by a dollar. To round these properly, the first category should round to $11 and
 		the others $10. Rounding up has been prioritised based on greatest amount of cents.
 		"""
 		totalWithTruncation = sum(self.applyToStreams(lambda _,s : math.trunc(s.total)))
@@ -128,20 +140,21 @@ class TransactionCollection:
 			keysSortedByCents = [k for _,k in zippedCentsAndKeys]
 		else:
 			keysSortedByCents = self.streams.keys()
-		
+
 		for k in keysSortedByCents:
 			if difference > 0:
 				self.streams[k].roundTotal(awayFromZero=True)
 				difference -= 1
 			else:
 				self.streams[k].roundTotal(awayFromZero=False)
-		
+
 
 class ExpensesCollection(TransactionCollection):
 
-	def __init__(self, config):
-		super().__init__(config)
+	def __init__(self, config, categories : Categories):
+		super().__init__(config, categories.toTranslator())
 		self.groups : dict(str, TransactionCollection) = dict()
+		self.categories : Categories = categories
 
 	def __str__(self):
 		strings = [str(group) for group in self.groups.values()]
@@ -152,15 +165,15 @@ class ExpensesCollection(TransactionCollection):
 		group = transaction.parentCategory
 		self.streams.insert(transaction, group, self.name)
 		if group not in self.groups:
-			self.groups[group] = TransactionCollection(name=group)
+			self.groups[group] = TransactionCollection(name=group, translator=self.categories.toSubcategoryTranslator(group))
 		self.groups[group].streams.insert(transaction, transaction.category, group)
-	
+
 	def cleanup(self):
 		for group in self.groups.values():
 			for stream in group.streams.copy().values():
 				if stream.total > 0:
 					print("Warning: Net positive expense found for category %s, review these transactions:" % stream.source)
-					for t in stream.items:
+					for t in stream.transactions:
 						print("* %s: %s" % (t.settled_at.date(), t))
 				self.consolidateSmallExpenses(stream)
 
@@ -176,8 +189,9 @@ class ExpensesCollection(TransactionCollection):
 		for parent, group in zip(self.streams.values(), self.groups.values()):
 			group.roundTo(parent.total)
 
-	
+
 class Linker(TransactionCollection):
+
 	def __init__(self, income, expenses, savings):
 		self.streams = Streams()
 		difference = income.total() + expenses.total() + savings.total()
