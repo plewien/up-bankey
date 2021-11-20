@@ -69,11 +69,12 @@ class Streams(dict):
 		if target in self:
 			self[target].accumulate(transaction)
 		else:
-			target_name = self.translate(target)
+			sourcename = self.translate(self.name)
+			targetname = self.translate(target)
 			if outgoing:
-				self[target] = Stream(self.name, target_name, transaction)
+				self[target] = Stream(sourcename, targetname, transaction)
 			else:
-				self[target] = Stream(target_name, self.name, transaction)
+				self[target] = Stream(targetname, sourcename, transaction)
 		pass
 
 	def targetify(self, transaction):
@@ -151,7 +152,7 @@ class ExpenseStreams(Streams):
 	to have both category types.
 	"""
 	def __init__(self, config, categories : Categories):
-		super().__init__(config, categories.to_translator())
+		super().__init__(config, translator=categories.to_translator())
 		self.groups : dict(str, Streams) = dict()
 		self.categories : Categories = categories
 

@@ -35,7 +35,7 @@ class Categories(ModelBase, dict):
 
 	def to_subtranslator(self, id):
 		translator = {child : self[child].name for child in self[id].children}
-		# translator[id] = self[id].name
+		translator[id] = self[id].name  # include map from name to
 		return translator
 
 	def to_translator(self):
