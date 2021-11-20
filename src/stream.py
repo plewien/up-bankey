@@ -44,6 +44,7 @@ class Stream:
 		if self.total < 0:
 			self.source, self.target = self.target, self.source
 			self.total = -self.total
+		pass
 
 	def isBelowThreshold(self, threshold):
 		return abs(self.total) < threshold
@@ -53,13 +54,13 @@ class Streams(dict):
 
 	def __init__(self, config=None, name=None, translator=None, *arg, **kw):
 		super(Streams, self).__init__(*arg, **kw)
-		self.name = config.name if config is not None else name
 		self.translator = translator
 		self.config = config
+		self.name = config.name if config else name
 		pass
 
 	def __str__(self):
-		return "\n".join([str(stream) for stream in self.values()])
+		return "\n".join([str(stream) for stream in self.values_sorted_by_total()])
 
 	@staticmethod
 	def makeKey(source, target):
@@ -102,6 +103,10 @@ class Streams(dict):
 			self[newKey].target = target
 		del self[oldKey]
 		pass
+
+	def values_sorted_by_total(self):
+		sort_key = lambda stream: abs(stream.total)
+		return sorted(self.values(), key=sort_key, reverse=True)
 
 	def total(self):
 		return sum([stream.total for stream in self.values()])
@@ -146,8 +151,9 @@ class ExpenseStreams(Streams):
 	"""
 	Streams for expenses are a special case, as we need to handle both parent and child categories.
 
-	The streams in this class are for each parent category. The streams from the parent categories to the sub-categories are
-	handled by the groups. All transactions from Up Bank are guaranteed to have both category types.
+	The streams in this class are for each parent category. The streams from the parent categories
+	to the sub-categories are handled by the groups. All transactions from Up Bank are guaranteed
+	to have both category types.
 	"""
 	def __init__(self, config, categories : Categories):
 		super().__init__(config, categories.toTranslator())
@@ -229,7 +235,7 @@ class TransactionCollection:
 
 	def link(self):
 		difference = self.income.total() + self.expenses.total() + self.savings.total()
-		self.savings.insertByValue(-difference, "Bank Account", "Savings")
+		self.savings.insertByValue(-difference, "Bank Account", self.savings.name)
 		self.income.insertByValue(self.expenses.total(), self.expenses.name, self.income.name)
 		self.income.insertByValue(self.savings.total(), self.savings.name, self.income.name)
 		pass
