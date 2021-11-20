@@ -34,7 +34,6 @@ class TransactionFactory:
 		if len(argv) == 2 and isinstance(argv[0], Number) and isinstance(argv[1], str):
 			return self._create_from_value(argv[0], argv[1])
 		print("Warning: No matching transaction type found for arguments", str(argv))
-		print(len(argv))
 		return None
 
 	def _create_from_up(self, transaction : Transaction):
