@@ -1,8 +1,7 @@
-from upbankapi import Client, NotAuthorizedException
-
 from category import Categories
 from config import Config
 from stream import TransactionCollection
+from upbankapi import Client, NotAuthorizedException
 
 client = Client()
 config = Config("config/personal.yaml")
@@ -22,13 +21,14 @@ transactions = config.filter(transactions)
 category_data = client.api("/categories")
 categories = Categories(client, category_data)
 
+# Process stream collections
 streams = TransactionCollection(config, categories)
 streams.addTransactions(transactions)
 streams.cleanup()
 streams.round()
 streams.link()
 
-# Write the results to file...
+# Write the results to file
 with open('results.txt', 'w') as f:
     print(streams, file=f)
 
