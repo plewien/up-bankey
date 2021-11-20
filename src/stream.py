@@ -27,14 +27,14 @@ class Stream:
 		self.transactions.append(transaction)
 		self.total += transaction.amount
 
-	def accumulateList(self, transactions : list):
+	def accumulate_list(self, transactions : list):
 		for transaction in transactions:
 			self.accumulate(transaction)
 
-	def accumulateByValue(self, value):
+	def accumulate_by_value(self, value):
 		self.total += value
 
-	def roundTotal(self, awayFromZero=False):
+	def round_total(self, awayFromZero=False):
 		if self.total > 0 and awayFromZero or self.total < 0 and not awayFromZero:
 			self.total = math.ceil(self.total)
 		else:
@@ -46,7 +46,7 @@ class Stream:
 			self.total = -self.total
 		pass
 
-	def isBelowThreshold(self, threshold):
+	def is_below_threshold(self, threshold):
 		return abs(self.total) < threshold
 
 
@@ -77,12 +77,12 @@ class Streams(dict):
 		return self[key]
 
 	def insert(self, transaction : GenericTransaction):
-		self.insert_impl(transaction, self.config.getAlias(transaction), self.name)
+		self.insert_impl(transaction, self.config.get_alias(transaction), self.name)
 
-	def insertByValue(self, value, source, target):
+	def insert_by_value(self, value, source, target):
 		key = Streams.makeKey(source, target)
 		self[key] = Stream(source, target)
-		self[key].accumulateByValue(value)
+		self[key].accumulate_by_value(value)
 
 	def rename(self, stream : Stream, source=None, target=None):
 		oldKey = Streams.makeKey(stream.source, stream.target)
@@ -96,7 +96,7 @@ class Streams(dict):
 		# Insert the new stream into the collection
 		newKey = Streams.makeKey(source, target)
 		if newKey in self:
-			self[newKey].accumulateList(self[oldKey].transactions)
+			self[newKey].accumulate_list(self[oldKey].transactions)
 		else:
 			self[newKey] = self[oldKey]
 			self[newKey].source = source
@@ -120,9 +120,9 @@ class Streams(dict):
 		return [apply(k, s) for k, s in self.items()]
 
 	def round(self):
-		self.roundTo(self.total())
+		self.round_to(self.total())
 
-	def roundTo(self, total):
+	def round_to(self, total):
 		"""
 		Rounding requires some finesse to ensure the streams balance. Consider a simple example
 		where there's three categories with totals $10.40, $10.30 and $10.30. Using rounding, these
@@ -141,10 +141,10 @@ class Streams(dict):
 
 		for k in keysSortedByCents:
 			if difference > 0:
-				self[k].roundTotal(awayFromZero=True)
+				self[k].round_total(awayFromZero=True)
 				difference -= 1
 			else:
-				self[k].roundTotal(awayFromZero=False)
+				self[k].round_total(awayFromZero=False)
 
 
 class ExpenseStreams(Streams):
@@ -156,7 +156,7 @@ class ExpenseStreams(Streams):
 	to have both category types.
 	"""
 	def __init__(self, config, categories : Categories):
-		super().__init__(config, categories.toTranslator())
+		super().__init__(config, categories.to_translator())
 		self.groups : dict(str, Streams) = dict()
 		self.categories : Categories = categories
 
@@ -169,7 +169,7 @@ class ExpenseStreams(Streams):
 		group = transaction.parentCategory
 		self.insert_impl(transaction, group, self.name)
 		if group not in self.groups:
-			self.groups[group] = Streams(name=group, translator=self.categories.toSubcategoryTranslator(group))
+			self.groups[group] = Streams(name=group, translator=self.categories.to_subtranslator(group))
 		self.groups[group].insert_impl(transaction, transaction.category, group)
 
 	def cleanup(self):
@@ -179,19 +179,19 @@ class ExpenseStreams(Streams):
 					print("Warning: Net positive expense found for category %s, review these transactions:" % stream.source)
 					for t in stream.transactions:
 						print("* %s: %s" % (t.settled_at.date(), t))
-				self.consolidateSmallExpenses(stream)
+				self.consolidate_small_expenses(stream)
 
-	def consolidateSmallExpenses(self, stream):
+	def consolidate_small_expenses(self, stream):
 		parent = stream.target
 		relativeThreshold = self.config.relativeThreshold * self[Streams.makeKey(parent, self.name)].total
 		threshold = max(self.config.absoluteThreshold, relativeThreshold)
-		if stream.isBelowThreshold(threshold):
+		if stream.is_below_threshold(threshold):
 			self.groups[parent].rename(stream, source="Other "+parent)
 
 	def round(self):
 		super().round()
 		for parent, group in zip(self.values(), self.groups.values()):
-			group.roundTo(parent.total)
+			group.round_to(parent.total)
 
 
 class TransactionCollection:
@@ -235,7 +235,7 @@ class TransactionCollection:
 
 	def link(self):
 		difference = self.income.total() + self.expenses.total() + self.savings.total()
-		self.savings.insertByValue(-difference, "Bank Account", self.savings.name)
-		self.income.insertByValue(self.expenses.total(), self.expenses.name, self.income.name)
-		self.income.insertByValue(self.savings.total(), self.savings.name, self.income.name)
+		self.savings.insert_by_value(-difference, "Bank Account", self.savings.name)
+		self.income.insert_by_value(self.expenses.total(), self.expenses.name, self.income.name)
+		self.income.insert_by_value(self.savings.total(), self.savings.name, self.income.name)
 		pass

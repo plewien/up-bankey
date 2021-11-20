@@ -33,12 +33,12 @@ class Categories(ModelBase, dict):
 			self[category.id] = category
 		pass
 
-	def toSubcategoryTranslator(self, id):
+	def to_subtranslator(self, id):
 		translator = {child : self[child].name for child in self[id].children}
 		# translator[id] = self[id].name
 		return translator
 
-	def toTranslator(self):
+	def to_translator(self):
 		return {key : self[key].name for key in self.keys()}
 
 

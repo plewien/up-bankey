@@ -46,15 +46,15 @@ class TransactionType(Enum):
 class CollectionConfig:
 	def __init__(self, config):
 		self.name = config['name']
-		self.tags = CollectionConfig.makeSet(config['classifiers']['tags'])
-		self.accounts = CollectionConfig.makeSet(config['classifiers']['accounts'])
-		self.tagAliases: dict = CollectionConfig.makeAliases(config['classifiers']['tags'])
-		self.accountAliases: dict = CollectionConfig.makeAliases(config['classifiers']['accounts'])
+		self.tags = CollectionConfig.make_set(config['classifiers']['tags'])
+		self.accounts = CollectionConfig.make_set(config['classifiers']['accounts'])
+		self.tagAliases: dict = CollectionConfig.make_aliases(config['classifiers']['tags'])
+		self.accountAliases: dict = CollectionConfig.make_aliases(config['classifiers']['accounts'])
 		self.absoluteThreshold = config['threshold']['value']
 		self.relativeThreshold = config['threshold']['percentage'] / 100
 
 	@staticmethod
-	def makeSet(l : list):
+	def make_set(l : list):
 		s = set()
 		for elem in l:
 			if isinstance(elem, dict):
@@ -65,11 +65,11 @@ class CollectionConfig:
 		return s
 
 	@staticmethod
-	def makeAliases(l : list):
+	def make_aliases(l : list):
 		listOfAliases = filter(lambda e: isinstance(e, dict), l)
 		return {k:v for element in listOfAliases for (k,v) in element.items()}
 
-	def getAlias(self, transaction : GenericTransaction):
+	def get_alias(self, transaction : GenericTransaction):
 		for tag in transaction.tags:
 			alias = self.tagAliases.get(tag, None)
 			if alias is not None:
@@ -83,8 +83,8 @@ class CollectionConfig:
 
 class IgnoreConfig(CollectionConfig):
 	def __init__(self, config):
-		self.tags = CollectionConfig.makeSet(config['tags'])
-		self.accounts = CollectionConfig.makeSet(config['accounts'])
+		self.tags = CollectionConfig.make_set(config['tags'])
+		self.accounts = CollectionConfig.make_set(config['accounts'])
 
 class Config:
 	def __init__(self, path):
@@ -108,10 +108,10 @@ class Config:
 
 		# TODO: Order of classification should be taken from the config
 		classifierOrder = {
-			self.classifyByTag,
-			self.classifyByCategoryPresence,
-			self.classifyByAccount,
-			self.classifyByPositiveValue,
+			self.classify_by_tag,
+			self.classify_by_category_presence,
+			self.classify_by_account,
+			self.classify_by_postive_value,
 		}
 		for classifier in classifierOrder:
 			classification = classifier(transaction)
@@ -120,7 +120,7 @@ class Config:
 
 		return TransactionType.Unknown
 
-	def classifyByTag(self, transaction : GenericTransaction):
+	def classify_by_tag(self, transaction : GenericTransaction):
 		tags = set(transaction.tags)
 		if tags.intersection(self.ignore.tags):		return TransactionType.Ignore
 		if tags.intersection(self.income.tags):		return TransactionType.Income
@@ -128,7 +128,7 @@ class Config:
 		if tags.intersection(self.savings.tags):	return TransactionType.Savings
 		return TransactionType.Unknown
 
-	def classifyByAccount(self, transaction : GenericTransaction):
+	def classify_by_account(self, transaction : GenericTransaction):
 		account = transaction.description
 		if account in self.ignore.accounts:		return TransactionType.Ignore
 		if account in self.income.accounts:		return TransactionType.Income
@@ -136,12 +136,12 @@ class Config:
 		if account in self.savings.accounts:	return TransactionType.Savings
 		return TransactionType.Unknown
 
-	def classifyByCategoryPresence(self, transaction : GenericTransaction):
+	def classify_by_category_presence(self, transaction : GenericTransaction):
 		if transaction.category:
 			return TransactionType.Expense
 		return TransactionType.Unknown
 
-	def classifyByPositiveValue(self, transaction : GenericTransaction):
+	def classify_by_postive_value(self, transaction : GenericTransaction):
 		if transaction.amount > 0:
 			return TransactionType.Income
 		return TransactionType.Unknown
