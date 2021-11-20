@@ -27,7 +27,7 @@ collections:
   savings:
     name: Savings
     classifiers:
-      accounts: 
+      accounts:
         - Investment Account 1 : Investments
         - Investment Account 2 : Investments
         - Savings Account 1 : Savings

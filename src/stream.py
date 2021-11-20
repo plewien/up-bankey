@@ -6,7 +6,7 @@ import math
 
 
 def toSankeyMatic(source, target, amount):
-    return "%s [%d] %s" % (source, int(amount), target)
+	return "%s [%d] %s" % (source, int(amount), target)
 
 
 class Stream:
@@ -156,7 +156,7 @@ class ExpenseStreams(Streams):
 
 	def __str__(self):
 		strings = [str(group) for group in self.groups.values()]
-		strings += [super().__str__()]  # join the parent categories
+		strings += [super().__str__()]	# join the parent categories
 		return "\n".join(strings)
 
 	def insert(self, transaction : GenericTransaction):
@@ -207,9 +207,9 @@ class TransactionCollection:
 	def addTransactions(self, transactions):
 		for t in self.factory.to_generic_transaction_list(transactions):
 			type = self.config.classify(t)
-			if type is TransactionType.Income:        self.income.insert(t)
-			elif type is TransactionType.Expense:     self.expenses.insert(t)
-			elif type is TransactionType.Savings:     self.savings.insert(t)
+			if type is TransactionType.Income:		self.income.insert(t)
+			elif type is TransactionType.Expense:	self.expenses.insert(t)
+			elif type is TransactionType.Savings:	self.savings.insert(t)
 			else:
 				if type is TransactionType.Ignore:
 					message = "Ignoring transaction"

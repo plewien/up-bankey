@@ -22,10 +22,9 @@ class GenericTransaction(Transaction):
 		return f"<Transaction {self.date}: {self.amount} {self.currency} [{self.description}]>"
 
 
-
 class TransactionFactory:
 
-	def to_generic_transaction_list(self,  sourceList):
+	def to_generic_transaction_list(self, sourceList):
 		return [self.to_generic_transaction(source) for source in sourceList]
 
 	def to_generic_transaction(self, source):
@@ -44,6 +43,6 @@ class TransactionFactory:
 			tags = transaction.tags,
 			message = transaction.message
 		)
-	
+
 	def _create_from_csv(self, row):
 		return GenericTransaction(row)
