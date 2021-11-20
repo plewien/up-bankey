@@ -1,5 +1,6 @@
 from category import Categories
-from transaction import GenericTransaction
+from config import Config, TransactionType
+from transaction import GenericTransaction, TransactionFactory
 
 import math
 
@@ -50,16 +51,21 @@ class Stream:
 
 class Streams(dict):
 
-	def __init__(self, translator=None, *arg, **kw):
+	def __init__(self, config=None, name=None, translator=None, *arg, **kw):
 		super(Streams, self).__init__(*arg, **kw)
+		self.name = config.name if config is not None else name
 		self.translator = translator
+		self.config = config
 		pass
+
+	def __str__(self):
+		return "\n".join([str(stream) for stream in self.values()])
 
 	@staticmethod
 	def makeKey(source, target):
 		return source + target
 
-	def insert(self, transaction, source, target):
+	def insert_impl(self, transaction, source, target):
 		key = Streams.makeKey(source, target)
 		if key in self:
 			self[key].accumulate(transaction)
@@ -68,6 +74,9 @@ class Streams(dict):
 			target = self.translate(target)
 			self[key] = Stream(source, target, transaction)
 		return self[key]
+
+	def insert(self, transaction : GenericTransaction):
+		self.insert_impl(transaction, self.config.getAlias(transaction), self.name)
 
 	def insertByValue(self, value, source, target):
 		key = Streams.makeKey(source, target)
@@ -102,24 +111,8 @@ class Streams(dict):
 			return self.translator[id]
 		return id
 
-
-class TransactionCollection:
-	def __init__(self, config=None, name=None, translator=None):
-		self.name = config.name if config is not None else name
-		self.config = config
-		self.streams = Streams(translator)
-
-	def __str__(self):
-		return "\n".join([str(stream) for stream in self.streams.values()])
-
-	def insert(self, transaction : GenericTransaction):
-		self.streams.insert(transaction, self.config.getAlias(transaction), self.name)
-
-	def total(self):
-		return self.streams.total()
-
-	def applyToStreams(self, apply):
-		return [apply(k, s) for k, s in self.streams.items()]
+	def apply(self, apply):
+		return [apply(k, s) for k, s in self.items()]
 
 	def round(self):
 		self.roundTo(self.total())
@@ -132,28 +125,33 @@ class TransactionCollection:
 		be $31, off by a dollar. To round these properly, the first category should round to $11 and
 		the others $10. Rounding up has been prioritised based on greatest amount of cents.
 		"""
-		totalWithTruncation = sum(self.applyToStreams(lambda _,s : math.trunc(s.total)))
+		totalWithTruncation = sum(self.apply(lambda _,s : math.trunc(s.total)))
 		difference = math.floor(abs(total - totalWithTruncation))
 		if difference > 0:
-			zippedCentsAndKeys = self.applyToStreams(lambda k,s : (abs(s.total) % 1, k))
+			zippedCentsAndKeys = self.apply(lambda k,s : (abs(s.total) % 1, k))
 			zippedCentsAndKeys.sort(reverse=True)
 			keysSortedByCents = [k for _,k in zippedCentsAndKeys]
 		else:
-			keysSortedByCents = self.streams.keys()
+			keysSortedByCents = self.keys()
 
 		for k in keysSortedByCents:
 			if difference > 0:
-				self.streams[k].roundTotal(awayFromZero=True)
+				self[k].roundTotal(awayFromZero=True)
 				difference -= 1
 			else:
-				self.streams[k].roundTotal(awayFromZero=False)
+				self[k].roundTotal(awayFromZero=False)
 
 
-class ExpensesCollection(TransactionCollection):
+class ExpenseStreams(Streams):
+	"""
+	Streams for expenses are a special case, as we need to handle both parent and child categories.
 
+	The streams in this class are for each parent category. The streams from the parent categories to the sub-categories are
+	handled by the groups. All transactions from Up Bank are guaranteed to have both category types.
+	"""
 	def __init__(self, config, categories : Categories):
 		super().__init__(config, categories.toTranslator())
-		self.groups : dict(str, TransactionCollection) = dict()
+		self.groups : dict(str, Streams) = dict()
 		self.categories : Categories = categories
 
 	def __str__(self):
@@ -163,14 +161,14 @@ class ExpensesCollection(TransactionCollection):
 
 	def insert(self, transaction : GenericTransaction):
 		group = transaction.parentCategory
-		self.streams.insert(transaction, group, self.name)
+		self.insert_impl(transaction, group, self.name)
 		if group not in self.groups:
-			self.groups[group] = TransactionCollection(name=group, translator=self.categories.toSubcategoryTranslator(group))
-		self.groups[group].streams.insert(transaction, transaction.category, group)
+			self.groups[group] = Streams(name=group, translator=self.categories.toSubcategoryTranslator(group))
+		self.groups[group].insert_impl(transaction, transaction.category, group)
 
 	def cleanup(self):
 		for group in self.groups.values():
-			for stream in group.streams.copy().values():
+			for stream in group.copy().values():
 				if stream.total > 0:
 					print("Warning: Net positive expense found for category %s, review these transactions:" % stream.source)
 					for t in stream.transactions:
@@ -179,22 +177,59 @@ class ExpensesCollection(TransactionCollection):
 
 	def consolidateSmallExpenses(self, stream):
 		parent = stream.target
-		relativeThreshold = self.config.relativeThreshold * self.streams[Streams.makeKey(parent, self.name)].total
+		relativeThreshold = self.config.relativeThreshold * self[Streams.makeKey(parent, self.name)].total
 		threshold = max(self.config.absoluteThreshold, relativeThreshold)
 		if stream.isBelowThreshold(threshold):
-			self.groups[parent].streams.rename(stream, source="Other "+parent)
+			self.groups[parent].rename(stream, source="Other "+parent)
 
 	def round(self):
 		super().round()
-		for parent, group in zip(self.streams.values(), self.groups.values()):
+		for parent, group in zip(self.values(), self.groups.values()):
 			group.roundTo(parent.total)
 
 
-class Linker(TransactionCollection):
+class TransactionCollection:
 
-	def __init__(self, income, expenses, savings):
-		self.streams = Streams()
-		difference = income.total() + expenses.total() + savings.total()
-		savings.streams.insertByValue(-difference, "Bank Account", "Savings")
-		self.streams.insertByValue(expenses.total(), expenses.name, income.name)
-		self.streams.insertByValue(savings.total(), savings.name, income.name)
+	def __init__(self, config : Config, categories : Categories):
+		self.config = config
+		self.factory = TransactionFactory()
+		self.income = Streams(config.income)
+		self.savings = Streams(config.savings)
+		self.expenses = ExpenseStreams(config.expense, categories)
+		pass
+
+	def __str__(self):
+		return "\n".join([str(collection) for collection in self.collections()])
+
+	def collections(self):
+		return [self.income, self.expenses, self.savings]
+
+	def addTransactions(self, transactions):
+		for t in self.factory.to_generic_transaction_list(transactions):
+			type = self.config.classify(t)
+			if type is TransactionType.Income:        self.income.insert(t)
+			elif type is TransactionType.Expense:     self.expenses.insert(t)
+			elif type is TransactionType.Savings:     self.savings.insert(t)
+			else:
+				if type is TransactionType.Ignore:
+					message = "Ignoring transaction"
+				else:
+					message = "Unmatched transaction found"
+				print("%s for %s" % (message, t))
+		pass
+
+	def cleanup(self):
+		self.expenses.cleanup()
+		pass
+
+	def round(self):
+		for collection in self.collections():
+			collection.round()
+		pass
+
+	def link(self):
+		difference = self.income.total() + self.expenses.total() + self.savings.total()
+		self.savings.insertByValue(-difference, "Bank Account", "Savings")
+		self.income.insertByValue(self.expenses.total(), self.expenses.name, self.income.name)
+		self.income.insertByValue(self.savings.total(), self.savings.name, self.income.name)
+		pass
