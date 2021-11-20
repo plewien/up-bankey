@@ -70,10 +70,11 @@ class CollectionConfig:
 		return {k:v for element in listOfAliases for (k,v) in element.items()}
 
 	def get_alias(self, transaction : GenericTransaction):
-		for tag in transaction.tags:
-			alias = self.tagAliases.get(tag, None)
-			if alias is not None:
-				return alias
+		if transaction.tags is not None:
+			for tag in transaction.tags:
+				alias = self.tagAliases.get(tag, None)
+				if alias is not None:
+					return alias
 
 		alias = self.accountAliases.get(transaction.description, None)
 		if alias is not None:

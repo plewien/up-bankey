@@ -31,9 +31,6 @@ class Stream:
 		for transaction in transactions:
 			self.accumulate(transaction)
 
-	def accumulate_by_value(self, value):
-		self.total += value
-
 	def round_total(self, awayFromZero=False):
 		if self.total > 0 and awayFromZero or self.total < 0 and not awayFromZero:
 			self.total = math.ceil(self.total)
@@ -54,9 +51,9 @@ class Streams(dict):
 
 	def __init__(self, config=None, name=None, translator=None, *arg, **kw):
 		super(Streams, self).__init__(*arg, **kw)
-		self.translator = translator
 		self.config = config
 		self.name = config.name if config else name
+		self.translator = translator
 		pass
 
 	def __str__(self):
@@ -64,25 +61,23 @@ class Streams(dict):
 
 	@staticmethod
 	def makeKey(source, target):
-		return source + target
+		return target
 
-	def insert_impl(self, transaction, source, target):
-		key = Streams.makeKey(source, target)
-		if key in self:
-			self[key].accumulate(transaction)
+	def insert(self, transaction, target=None, outgoing=False):
+		if target is None:
+			target = self.targetify(transaction)
+		if target in self:
+			self[target].accumulate(transaction)
 		else:
-			source = self.translate(source)
-			target = self.translate(target)
-			self[key] = Stream(source, target, transaction)
-		return self[key]
+			target_name = self.translate(target)
+			if outgoing:
+				self[target] = Stream(self.name, target_name, transaction)
+			else:
+				self[target] = Stream(target_name, self.name, transaction)
+		pass
 
-	def insert(self, transaction : GenericTransaction):
-		self.insert_impl(transaction, self.config.get_alias(transaction), self.name)
-
-	def insert_by_value(self, value, source, target):
-		key = Streams.makeKey(source, target)
-		self[key] = Stream(source, target)
-		self[key].accumulate_by_value(value)
+	def targetify(self, transaction):
+		return self.config.get_alias(transaction)
 
 	def rename(self, stream : Stream, source=None, target=None):
 		oldKey = Streams.makeKey(stream.source, stream.target)
@@ -166,11 +161,14 @@ class ExpenseStreams(Streams):
 		return "\n".join(strings)
 
 	def insert(self, transaction : GenericTransaction):
+		super().insert(transaction)
 		group = transaction.parentCategory
-		self.insert_impl(transaction, group, self.name)
 		if group not in self.groups:
 			self.groups[group] = Streams(name=group, translator=self.categories.to_subtranslator(group))
-		self.groups[group].insert_impl(transaction, transaction.category, group)
+		self.groups[group].insert(transaction, transaction.category)
+
+	def targetify(self, transaction):
+		return transaction.parentCategory
 
 	def cleanup(self):
 		for group in self.groups.values():
@@ -179,14 +177,13 @@ class ExpenseStreams(Streams):
 					print("Warning: Net positive expense found for category %s, review these transactions:" % stream.source)
 					for t in stream.transactions:
 						print("* %s: %s" % (t.settled_at.date(), t))
-				self.consolidate_small_expenses(stream)
+				self.consolidate_small_expenses(group, stream)
 
-	def consolidate_small_expenses(self, stream):
-		parent = stream.target
-		relativeThreshold = self.config.relativeThreshold * self[Streams.makeKey(parent, self.name)].total
+	def consolidate_small_expenses(self, group, stream):
+		relativeThreshold = self.config.relativeThreshold * group.total()
 		threshold = max(self.config.absoluteThreshold, relativeThreshold)
 		if stream.is_below_threshold(threshold):
-			self.groups[parent].rename(stream, source="Other "+parent)
+			group.rename(stream, source="Other "+group.name)
 
 	def round(self):
 		super().round()
@@ -235,7 +232,7 @@ class TransactionCollection:
 
 	def link(self):
 		difference = self.income.total() + self.expenses.total() + self.savings.total()
-		self.savings.insert_by_value(-difference, "Bank Account", self.savings.name)
-		self.income.insert_by_value(self.expenses.total(), self.expenses.name, self.income.name)
-		self.income.insert_by_value(self.savings.total(), self.savings.name, self.income.name)
+		self.savings.insert(self.factory.to_generic_transaction(-difference, "Bank Account"))
+		self.income.insert(self.factory.to_generic_transaction(self.expenses.total(), self.expenses.name))
+		self.income.insert(self.factory.to_generic_transaction(self.savings.total(), self.savings.name))
 		pass

@@ -1,5 +1,6 @@
 from upbankapi.models import Transaction
 from datetime import datetime
+from numbers import Number
 
 # 1. Obtain data from source(s)
 # 2. Read into generic transaction array
@@ -27,9 +28,13 @@ class TransactionFactory:
 	def to_generic_transaction_list(self, sourceList):
 		return [self.to_generic_transaction(source) for source in sourceList]
 
-	def to_generic_transaction(self, source):
-		if isinstance(source, Transaction):
-			return self._create_from_up(source)
+	def to_generic_transaction(self, *argv):
+		if isinstance(argv[0], Transaction):
+			return self._create_from_up(argv[0])
+		if len(argv) == 2 and isinstance(argv[0], Number) and isinstance(argv[1], str):
+			return self._create_from_value(argv[0], argv[1])
+		print("Warning: No matching transaction type found for arguments", str(argv))
+		print(len(argv))
 		return None
 
 	def _create_from_up(self, transaction : Transaction):
@@ -42,6 +47,14 @@ class TransactionFactory:
 			parentCategory = transaction.parentCategory,
 			tags = transaction.tags,
 			message = transaction.message
+		)
+
+	def _create_from_value(self, amount : float, description):
+		return GenericTransaction(
+			date = datetime.now(),
+			description = description,
+			amount = amount,
+			currency = "AUD"  # TODO: Default currency
 		)
 
 	def _create_from_csv(self, row):
