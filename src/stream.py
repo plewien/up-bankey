@@ -49,19 +49,14 @@ class Stream:
 
 class Streams(dict):
 
-	def __init__(self, config=None, name=None, translator=None, *arg, **kw):
+	def __init__(self, config=None, name=None, *arg, **kw):
 		super(Streams, self).__init__(*arg, **kw)
 		self.config = config
 		self.name = config.name if config else name
-		self.translator = translator
 		pass
 
 	def __str__(self):
 		return "\n".join([str(stream) for stream in self.values_sorted_by_total()])
-
-	@staticmethod
-	def makeKey(source, target):
-		return target
 
 	def insert(self, transaction, target=None, outgoing=False):
 		if target is None:
@@ -69,34 +64,26 @@ class Streams(dict):
 		if target in self:
 			self[target].accumulate(transaction)
 		else:
-			sourcename = self.translate(self.name)
-			targetname = self.translate(target)
 			if outgoing:
-				self[target] = Stream(sourcename, targetname, transaction)
+				self[target] = Stream(self.name, target, transaction)
 			else:
-				self[target] = Stream(targetname, sourcename, transaction)
+				self[target] = Stream(target, self.name, transaction)
 		pass
 
 	def targetify(self, transaction):
 		return self.config.get_alias(transaction)
 
-	def rename(self, stream : Stream, source=None, target=None):
-		oldKey = Streams.makeKey(stream.source, stream.target)
+	def rename(self, stream : Stream, target):
+		oldKey = stream.target
 		if oldKey not in self:
 			return
-		if source is None:
-			source = stream.source
-		if target is None:
-			target = stream.target
 
 		# Insert the new stream into the collection
-		newKey = Streams.makeKey(source, target)
-		if newKey in self:
-			self[newKey].accumulate_list(self[oldKey].transactions)
+		if target in self:
+			self[target].accumulate_list(self[oldKey].transactions)
 		else:
-			self[newKey] = self[oldKey]
-			self[newKey].source = source
-			self[newKey].target = target
+			self[target] = self[oldKey]
+			self[target].target = target
 		del self[oldKey]
 		pass
 
@@ -106,11 +93,6 @@ class Streams(dict):
 
 	def total(self):
 		return sum([stream.total for stream in self.values()])
-
-	def translate(self, id):
-		if (self.translator is not None) and (id in self.translator):
-			return self.translator[id]
-		return id
 
 	def apply(self, apply):
 		return [apply(k, s) for k, s in self.items()]
@@ -151,10 +133,9 @@ class ExpenseStreams(Streams):
 	to the sub-categories are handled by the groups. All transactions from Up Bank are guaranteed
 	to have both category types.
 	"""
-	def __init__(self, config, categories : Categories):
-		super().__init__(config, translator=categories.to_translator())
+	def __init__(self, config):
+		super().__init__(config)
 		self.groups : dict(str, Streams) = dict()
-		self.categories : Categories = categories
 
 	def __str__(self):
 		strings = [str(group) for group in self.groups.values()]
@@ -165,7 +146,7 @@ class ExpenseStreams(Streams):
 		super().insert(transaction)
 		group = transaction.parentCategory
 		if group not in self.groups:
-			self.groups[group] = Streams(name=group, translator=self.categories.to_subtranslator(group))
+			self.groups[group] = Streams(name=group)
 		self.groups[group].insert(transaction, transaction.category)
 
 	def targetify(self, transaction):
@@ -184,7 +165,7 @@ class ExpenseStreams(Streams):
 		relativeThreshold = self.config.relativeThreshold * group.total()
 		threshold = max(self.config.absoluteThreshold, relativeThreshold)
 		if stream.is_below_threshold(threshold):
-			group.rename(stream, source="Other "+group.name)
+			group.rename(stream, target="Other "+group.name)
 
 	def round(self):
 		super().round()
@@ -196,10 +177,10 @@ class TransactionCollection:
 
 	def __init__(self, config : Config, categories : Categories):
 		self.config = config
-		self.factory = TransactionFactory()
+		self.factory = TransactionFactory(categories)
 		self.income = Streams(config.income)
 		self.savings = Streams(config.savings)
-		self.expenses = ExpenseStreams(config.expense, categories)
+		self.expenses = ExpenseStreams(config.expense)
 		pass
 
 	def __str__(self):

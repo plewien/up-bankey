@@ -1,6 +1,7 @@
 from upbankapi.models import Transaction
 from datetime import datetime
 from numbers import Number
+from typing import Optional
 
 # 1. Obtain data from source(s)
 # 2. Read into generic transaction array
@@ -9,21 +10,25 @@ from numbers import Number
 
 class GenericTransaction(Transaction):
 
-	def __init__(self, date, description, amount, currency, category=None, parentCategory=None, tags=None, message=None):
+	def __init__(self, date, description, amount, currency, category=None, parentCategory=None, tags=list(), message=None):
 		self.date: datetime = date
 		self.description: str = description
 		self.amount: float = amount
 		self.currency: str = currency
-		self.category: str = category
-		self.parentCategory: str = parentCategory
-		self.tags: list = tags
-		self.message: str = message
+		self.category: Optional[str] = category
+		self.parentCategory: Optional[str] = parentCategory
+		self.tags: Optional[list] = tags
+		self.message: Optional[str] = message
 
 	def __repr__(self):
 		return f"<Transaction {self.date}: {self.amount} {self.currency} [{self.description}]>"
 
 
 class TransactionFactory:
+
+	def __init__(self, categories):
+		self.categories = categories
+		pass
 
 	def to_generic_transaction_list(self, sourceList):
 		return [self.to_generic_transaction(source) for source in sourceList]
@@ -36,14 +41,19 @@ class TransactionFactory:
 		print("Warning: No matching transaction type found for arguments", str(argv))
 		return None
 
+	def _categorify(self, id):
+		if id in self.categories:
+			return self.categories[id].name
+		return id
+
 	def _create_from_up(self, transaction : Transaction):
 		return GenericTransaction(
 			date = transaction.created_at,
 			description = transaction.description,
 			amount = transaction.amount,
 			currency = transaction.currency,
-			category = transaction.category,
-			parentCategory = transaction.parentCategory,
+			category = self._categorify(transaction.category),
+			parentCategory = self._categorify(transaction.parentCategory),
 			tags = transaction.tags,
 			message = transaction.message
 		)

@@ -70,11 +70,10 @@ class CollectionConfig:
 		return {k:v for element in listOfAliases for (k,v) in element.items()}
 
 	def get_alias(self, transaction : GenericTransaction):
-		if transaction.tags is not None:
-			for tag in transaction.tags:
-				alias = self.tagAliases.get(tag, None)
-				if alias is not None:
-					return alias
+		for tag in transaction.tags:
+			alias = self.tagAliases.get(tag, None)
+			if alias is not None:
+				return alias
 
 		alias = self.accountAliases.get(transaction.description, None)
 		if alias is not None:
@@ -146,6 +145,7 @@ class Config:
 		if transaction.amount > 0:
 			return TransactionType.Income
 		return TransactionType.Unknown
+
 
 defaultClassifier = {
 	'tags': [],
