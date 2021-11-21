@@ -50,6 +50,7 @@ class CollectionConfig:
 		self.accounts = CollectionConfig.make_set(config['classifiers']['accounts'])
 		self.tagAliases: dict = CollectionConfig.make_aliases(config['classifiers']['tags'])
 		self.accountAliases: dict = CollectionConfig.make_aliases(config['classifiers']['accounts'])
+		self.countThreshold = config['threshold']['count']
 		self.absoluteThreshold = config['threshold']['value']
 		self.relativeThreshold = config['threshold']['percentage'] / 100
 
@@ -153,6 +154,7 @@ defaultClassifier = {
 }
 
 defaultThreshold = {
+	'count': 10,
 	'value': 0,
 	'percentage': 0
 }

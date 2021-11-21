@@ -22,6 +22,7 @@ collections:
   expenses:
     name: Expenses
     threshold:
+      count: 5
       value: 20
       percentage: 10
   savings:

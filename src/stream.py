@@ -57,7 +57,7 @@ class Streams(dict):
 		pass
 
 	def __str__(self):
-		return "\n".join([str(stream) for stream in self.values_sorted_by_total()])
+		return "\n".join([str(stream) for stream in self.values_sorted()])
 
 	def insert(self, transaction, source=None):
 		if source is None:
@@ -71,7 +71,7 @@ class Streams(dict):
 	def _tosource(self, transaction):
 		return self.config.get_alias(transaction)
 
-	def rename(self, stream : Stream, source, isOther=False):
+	def rename(self, stream : Stream, source):
 		oldKey = stream.source
 		if oldKey not in self:
 			return
@@ -82,11 +82,24 @@ class Streams(dict):
 		else:
 			self[source] = self[oldKey]
 			self[source].source = source
-			self[source].isOther = isOther
 		del self[oldKey]
 		pass
 
-	def values_sorted_by_total(self):
+	def rename_as_other(self, stream : Stream):
+		othername = "Other "+self.name
+		self.rename(stream, source=othername)
+		if othername in self:
+			self[othername].isOther = True
+
+	def reduce(self, limit):
+		difference = len(self) - limit
+		if difference > 0:
+			streamsNotOther = [x for x in self.values() if not x.isOther]
+			streamsNotOther.sort(key = lambda stream: abs(stream.total))
+			for stream in streamsNotOther[:difference]:
+				self.rename_as_other(stream)
+
+	def values_sorted(self):
 		sort_key = lambda stream: (not stream.isOther, abs(stream.total))
 		return sorted(self.values(), key=sort_key, reverse=True)
 
@@ -159,12 +172,13 @@ class ExpenseStreams(Streams):
 					for t in stream.transactions:
 						print("* %s: %s" % (t.settled_at.date(), t))
 				self.consolidate_small_expenses(group, stream)
+			group.reduce(limit=self.config.countThreshold)
 
 	def consolidate_small_expenses(self, group, stream):
 		relativeThreshold = self.config.relativeThreshold * group.total()
 		threshold = max(self.config.absoluteThreshold, relativeThreshold)
 		if stream.is_below_threshold(threshold):
-			group.rename(stream, source="Other "+group.name, isOther=True)
+			group.rename_as_other(stream)
 
 	def round(self):
 		super().round()
