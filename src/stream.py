@@ -16,6 +16,7 @@ class Stream:
 		self.target = target
 		self.transactions = [transaction] if transaction else []
 		self.total = transaction.amount if transaction else 0
+		self.isOther = False
 
 	def __str__(self):
 		if self.total > 0:
@@ -58,37 +59,35 @@ class Streams(dict):
 	def __str__(self):
 		return "\n".join([str(stream) for stream in self.values_sorted_by_total()])
 
-	def insert(self, transaction, target=None, outgoing=False):
-		if target is None:
-			target = self.targetify(transaction)
-		if target in self:
-			self[target].accumulate(transaction)
+	def insert(self, transaction, source=None):
+		if source is None:
+			source = self._tosource(transaction)
+		if source in self:
+			self[source].accumulate(transaction)
 		else:
-			if outgoing:
-				self[target] = Stream(self.name, target, transaction)
-			else:
-				self[target] = Stream(target, self.name, transaction)
+			self[source] = Stream(source, self.name, transaction)
 		pass
 
-	def targetify(self, transaction):
+	def _tosource(self, transaction):
 		return self.config.get_alias(transaction)
 
-	def rename(self, stream : Stream, target):
-		oldKey = stream.target
+	def rename(self, stream : Stream, source, isOther=False):
+		oldKey = stream.source
 		if oldKey not in self:
 			return
 
 		# Insert the new stream into the collection
-		if target in self:
-			self[target].accumulate_list(self[oldKey].transactions)
+		if source in self:
+			self[source].accumulate_list(self[oldKey].transactions)
 		else:
-			self[target] = self[oldKey]
-			self[target].target = target
+			self[source] = self[oldKey]
+			self[source].source = source
+			self[source].isOther = isOther
 		del self[oldKey]
 		pass
 
 	def values_sorted_by_total(self):
-		sort_key = lambda stream: abs(stream.total)
+		sort_key = lambda stream: (not stream.isOther, abs(stream.total))
 		return sorted(self.values(), key=sort_key, reverse=True)
 
 	def total(self):
@@ -149,7 +148,7 @@ class ExpenseStreams(Streams):
 			self.groups[group] = Streams(name=group)
 		self.groups[group].insert(transaction, transaction.category)
 
-	def targetify(self, transaction):
+	def _tosource(self, transaction):
 		return transaction.parentCategory
 
 	def cleanup(self):
@@ -165,7 +164,7 @@ class ExpenseStreams(Streams):
 		relativeThreshold = self.config.relativeThreshold * group.total()
 		threshold = max(self.config.absoluteThreshold, relativeThreshold)
 		if stream.is_below_threshold(threshold):
-			group.rename(stream, target="Other "+group.name)
+			group.rename(stream, source="Other "+group.name, isOther=True)
 
 	def round(self):
 		super().round()
