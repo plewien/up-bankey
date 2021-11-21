@@ -3,6 +3,8 @@ from datetime import datetime
 from numbers import Number
 from typing import Optional
 
+from category import Categories
+
 # 1. Obtain data from source(s)
 # 2. Read into generic transaction array
 # 3. Parse into streams
@@ -26,7 +28,7 @@ class GenericTransaction(Transaction):
 
 class TransactionFactory:
 
-	def __init__(self, categories):
+	def __init__(self, categories : Categories):
 		self.categories = categories
 		pass
 
