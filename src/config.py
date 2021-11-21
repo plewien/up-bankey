@@ -53,6 +53,7 @@ class CollectionConfig:
 		self.countThreshold = config['threshold']['count']
 		self.absoluteThreshold = config['threshold']['value']
 		self.relativeThreshold = config['threshold']['percentage'] / 100
+		self.outgoing = config['outgoing']
 
 	@staticmethod
 	def make_set(l : list):
@@ -169,23 +170,26 @@ defaultConfig = {
 		'sources': {
 			'up-api' : {
 				'token' : 'UP_TOKEN',
-				'limit' : 4000,
+				'limit' : 1000,
 			}
 		}
 	},
 	'collections' : {
 		'income': {
 			'name' : 'Income',
+			'outgoing' : False,
 			'classifiers' : defaultClassifier,
 			'threshold' : defaultThreshold
 		},
 		'expenses': {
 			'name' : 'Expenses',
+			'outgoing' : True,
 			'classifiers' : defaultClassifier,
 			'threshold' : defaultThreshold
 		},
 		'savings': {
 			'name' : 'Savings',
+			'outgoing' : True,
 			'classifiers' : defaultClassifier,
 			'threshold' : defaultThreshold
 		}

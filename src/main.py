@@ -25,7 +25,6 @@ categories = Categories(client, category_data)
 streams = TransactionCollection(config, categories)
 streams.addTransactions(transactions)
 streams.cleanup()
-streams.round()
 streams.link()
 
 # Write the results to file

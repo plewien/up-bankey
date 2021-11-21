@@ -50,14 +50,18 @@ class Stream:
 
 class Streams(dict):
 
-	def __init__(self, config=None, name=None, *arg, **kw):
+	def __init__(self, config, *arg, **kw):
 		super(Streams, self).__init__(*arg, **kw)
 		self.config = config
-		self.name = config.name if config else name
+		self.name = config.name
 		pass
 
 	def __str__(self):
 		return "\n".join([str(stream) for stream in self.values_sorted()])
+
+	def values_sorted(self):
+		sort_key = lambda stream: (not stream.isOther, abs(stream.total))
+		return sorted(self.values(), key=sort_key, reverse=True)
 
 	def insert(self, transaction, source=None):
 		if source is None:
@@ -91,7 +95,7 @@ class Streams(dict):
 		if othername in self:
 			self[othername].isOther = True
 
-	def reduce(self, limit):
+	def consolidate_by_count(self, limit):
 		difference = len(self) - limit
 		if difference > 0:
 			streamsNotOther = [x for x in self.values() if not x.isOther]
@@ -99,9 +103,13 @@ class Streams(dict):
 			for stream in streamsNotOther[:difference]:
 				self.rename_as_other(stream)
 
-	def values_sorted(self):
-		sort_key = lambda stream: (not stream.isOther, abs(stream.total))
-		return sorted(self.values(), key=sort_key, reverse=True)
+	def consolidate_by_total(self, relative, absolute):
+		threshold = max(relative * self.total(), absolute)
+		for stream in self.copy().values():
+			if stream.isOther:
+				continue
+			if abs(stream.total) < abs(threshold):
+				self.rename_as_other(stream)
 
 	def total(self):
 		return sum([stream.total for stream in self.values()])
@@ -109,8 +117,25 @@ class Streams(dict):
 	def apply(self, apply):
 		return [apply(k, s) for k, s in self.items()]
 
+	def validate(self):
+		for stream in self.values():
+			if self.config.outgoing and stream.total > 0:
+				print("Warning: Outgoing stream found withe positive total, review these transactions:" % stream.source)
+			elif not self.config.outgoing and stream.total < 0:
+				print("Warning: Intended income stream found with negative total, review these transactions:" % stream.source)
+			else:
+				return
+			for t in stream.transactions:
+				print("* %s: %s" % (t.date.date(), t))
+
+	def consolidate(self):
+		self.consolidate_by_count(self.config.countThreshold)
+		self.consolidate_by_total(relative=self.config.relativeThreshold, absolute=self.config.absoluteThreshold)
+		pass
+
 	def round(self):
 		self.round_to(self.total())
+		pass
 
 	def round_to(self, total):
 		"""
@@ -158,27 +183,21 @@ class ExpenseStreams(Streams):
 		super().insert(transaction)
 		group = transaction.parentCategory
 		if group not in self.groups:
-			self.groups[group] = Streams(name=group)
+			config = self.config
+			config.name = group
+			self.groups[group] = Streams(config)
 		self.groups[group].insert(transaction, transaction.category)
 
 	def _tosource(self, transaction):
 		return transaction.parentCategory
 
-	def cleanup(self):
+	def validate(self):
 		for group in self.groups.values():
-			for stream in group.copy().values():
-				if stream.total > 0:
-					print("Warning: Net positive expense found for category %s, review these transactions:" % stream.source)
-					for t in stream.transactions:
-						print("* %s: %s" % (t.settled_at.date(), t))
-				self.consolidate_small_expenses(group, stream)
-			group.reduce(limit=self.config.countThreshold)
+			group.validate()
 
-	def consolidate_small_expenses(self, group, stream):
-		relativeThreshold = self.config.relativeThreshold * group.total()
-		threshold = max(self.config.absoluteThreshold, relativeThreshold)
-		if stream.is_below_threshold(threshold):
-			group.rename_as_other(stream)
+	def consolidate(self):
+		for group in self.groups.values():
+			group.consolidate()
 
 	def round(self):
 		super().round()
@@ -217,11 +236,9 @@ class TransactionCollection:
 		pass
 
 	def cleanup(self):
-		self.expenses.cleanup()
-		pass
-
-	def round(self):
 		for collection in self.collections():
+			collection.validate()
+			collection.consolidate()
 			collection.round()
 		pass
 
