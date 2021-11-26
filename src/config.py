@@ -18,13 +18,6 @@ def populateConfigRecursively(input: dict, default):
 		else:
 			input.setdefault(k, default[k])
 
-def isInternalTransaction(transaction: GenericTransaction):
-	actions = ['Cover', 'Transfer', 'Forward', 'Quick save transfer']
-	directions = ['from', 'to']
-	internalDescriptions = ['%s %s ' % (a, d) for a, d in itertools.product(actions, directions)]
-	internalDescriptions += ['Round Up', 'Bonus Payment']
-	return transaction.description.startswith(tuple(internalDescriptions))
-
 def toDateTime(input: str):
 	if input is None:
 		return None
@@ -83,6 +76,10 @@ class CollectionConfig:
 
 		return transaction.description
 
+	def match(self, transaction : GenericTransaction):
+		return bool(self.tags.intersection(transaction.tags)) \
+			or transaction.description in self.accounts
+
 class IgnoreConfig(CollectionConfig):
 	def __init__(self, config):
 		self.tags = CollectionConfig.make_set(config['tags'])
@@ -95,6 +92,7 @@ class Config:
 		self.since = toDateTime(config['options']['dates']['since'])
 		self.until = toDateTime(config['options']['dates']['until'])
 		self.limit = config['options']['sources']['up-api']['limit']
+		self.pagesize = config['options']['sources']['up-api']['pagesize']
 		self.ignore = IgnoreConfig(config['ignore'])
 		self.income = CollectionConfig(config['collections']['income'])
 		self.expense = CollectionConfig(config['collections']['expenses'])
@@ -104,7 +102,24 @@ class Config:
 		self.income.accounts.add("Interest")
 
 	def filter(self, transactions):
-		return filter(lambda t: not isInternalTransaction(t), transactions)
+		print("%d transactions found" % transactions.count)
+		if transactions.count >= self.limit:
+			print("Warning: Reached limit for number of transactions, consider increasing in configuration yaml")
+		filtered = [t for t in transactions if not Config._isInternalTransaction(t)]
+		warn = [t for t in filtered if self.ignore.match(t)]
+		filtered = [t for t in filtered if not self.ignore.match(t)]
+		print("%d transactions to be processed" % len(filtered))
+		for t in warn:
+			print("Ignoring transaction", t)
+		return filtered
+
+	@staticmethod
+	def _isInternalTransaction(transaction: GenericTransaction):
+		actions = ['Cover', 'Transfer', 'Forward', 'Quick save transfer']
+		directions = ['from', 'to']
+		internalDescriptions = ['%s %s ' % (a, d) for a, d in itertools.product(actions, directions)]
+		internalDescriptions += ['Round Up', 'Bonus Payment']
+		return transaction.description.startswith(tuple(internalDescriptions))
 
 	def classify(self, transaction : GenericTransaction):
 
@@ -171,6 +186,7 @@ defaultConfig = {
 			'up-api' : {
 				'token' : 'UP_TOKEN',
 				'limit' : 1000,
+				'pagesize' : 100,
 			}
 		}
 	},

@@ -14,7 +14,7 @@ except NotAuthorizedException:
 	exit()
 
 # get transactions between dates
-transactions = client.transactions(limit=config.limit, since=config.since, until=config.until)
+transactions = client.transactions(limit=config.limit, page_size=config.pagesize, since=config.since, until=config.until)
 transactions = config.filter(transactions)
 
 # Get data for categories

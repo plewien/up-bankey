@@ -228,11 +228,7 @@ class TransactionCollection:
 			elif type is TransactionType.Expense:	self.expenses.insert(t)
 			elif type is TransactionType.Savings:	self.savings.insert(t)
 			else:
-				if type is TransactionType.Ignore:
-					message = "Ignoring transaction"
-				else:
-					message = "Unmatched transaction found"
-				print("%s for %s" % (message, t))
+				print("Unmatched transaction found for", t)
 		pass
 
 	def cleanup(self):

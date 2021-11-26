@@ -8,6 +8,7 @@ options:
     up-api:
       token: UP_TOKEN
       limit: 4000
+      pagesize: 100
 
 # Transaction Collections
 collections:
