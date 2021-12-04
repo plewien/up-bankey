@@ -9,17 +9,24 @@ This is a configurable Sankey diagram generator for summarising the flow in your
 
 1. Clone this repository.
 
-   
+   ```sh
+   >> git clone https://github.com/plewien/up-bankey.git
+   >> cd up-bankey
+   ```
 
 2. Install dependencies.
 
-   
+   ```sh
+   >> python3 -m venv .venv/
+   >> source .venv/bin/activate
+   (venv) >> pip install -r requirements.txt
+   ```
 
 3. Set up an Up API personal access token.
 
    To interface with the Up API, you will need a personal access token (PAT). You can find instructions for how to retrieve one [here](https://developer.up.com.au/#getting-started). The recommended location for storing your PAT is in an environment variable `UP_TOKEN`, however this can be modified using the [`token` configuration option](#token).
 
-4. Run `python main.py`.
+4. Run `python src/main.py`.
 
 
 
@@ -31,7 +38,9 @@ To visualise the data, copy the text from `results.txt` into the inputs textbox 
 
 To add a custom configuration, create a copy of `example.yaml` in the `config` folder and run
 
-​	`python main.py --config <your-config>.yaml` 
+```sh
+python src/main.py config/<your-config>.yaml
+```
 
 
 

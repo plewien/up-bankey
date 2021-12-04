@@ -2,11 +2,16 @@ from category import Categories
 from config import Config
 from stream import TransactionCollection
 from upbankapi import Client, NotAuthorizedException
+import sys
 
+# generate user configuration
+if len(sys.argv) > 1:
+	config = Config(sys.argv[1])
+else:
+	config = Config()
+
+# obtain access to the Up API
 client = Client()
-config = Config("config/personal.yaml")
-
-# check the token is valid
 try:
 	print("Authorized: " + client.ping())
 except NotAuthorizedException:

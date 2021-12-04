@@ -85,15 +85,16 @@ class CollectionConfig:
 	def match(self, transaction : GenericTransaction):
 		return self.match_by_tag(transaction) or self.match_by_account(transaction)
 
+
 class IgnoreConfig(CollectionConfig):
 	def __init__(self, config):
 		self.tags = CollectionConfig.make_set(config['tags'])
 		self.accounts = CollectionConfig.make_set(config['accounts'])
 
+
 class Config:
-	def __init__(self, path):
-		config = readYaml(path)
-		populateConfigRecursively(config, defaultConfig)
+	def __init__(self, path=None):
+		config = Config._readConfig(path)
 		self.since = toDateTime(config['options']['dates']['since'])
 		self.until = toDateTime(config['options']['dates']['until'])
 		self.limit = config['options']['sources']['up-api']['limit']
@@ -102,7 +103,6 @@ class Config:
 		self.income = CollectionConfig(config['collections']['income'])
 		self.expense = CollectionConfig(config['collections']['expenses'])
 		self.savings = CollectionConfig(config['collections']['savings'])
-		self._config = config
 
 		# "Interest" will always be an income stream, so populate here
 		self.income.accounts.add("Interest")
@@ -118,6 +118,15 @@ class Config:
 		for t in warn:
 			print("Ignoring transaction", t)
 		return filtered
+
+	@staticmethod
+	def _readConfig(path):
+		if path is None:
+			return defaultConfig
+		else:
+			config = readYaml(path)
+			populateConfigRecursively(config, defaultConfig)
+			return config
 
 	@staticmethod
 	def _isInternalTransaction(transaction: GenericTransaction):
