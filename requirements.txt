@@ -1,2 +1,11 @@
-up-bank-api == 0.3.2
-pyyaml >= 6.0
+python-dateutil==2.8.2
+PyYAML==6.0
+six==1.16.0
+up-bank-api==0.3.2
+
+# Dependencies of up-bank-api
+certifi==2021.10.8
+charset-normalizer==2.0.7
+idna==3.3
+requests==2.26.0
+urllib3==1.26.7

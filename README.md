@@ -75,7 +75,7 @@ Optionally, you can specify an alternative name for transactions that are catego
 
 ```yaml
 accounts:
-	- Job 1 : Wages
+  - Job 1 : Wages
 ```
 
 ###### `accounts`
