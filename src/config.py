@@ -128,12 +128,12 @@ class Config:
 		return transaction.description.startswith(tuple(internalDescriptions))
 
 	def classify(self, transaction : GenericTransaction):
-		classifierOrder = {
+		classifierOrder = [
 			self.classify_by_tag,
 			self.classify_by_category_presence,
 			self.classify_by_account,
 			self.classify_by_postive_value,
-		}
+		]
 		for classifier in classifierOrder:
 			classification = classifier(transaction)
 			if classification is not TransactionType.Unknown:
