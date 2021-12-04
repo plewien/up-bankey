@@ -42,6 +42,7 @@ class Categories(ModelBase, dict):
 		return {key : self[key].name for key in self.keys()}
 
 
+## Prints a list of all categories available from the Up Bank API
 if __name__ == "__main__":
 	client = Client()
 	data = client.api("/categories")

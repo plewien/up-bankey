@@ -10,7 +10,7 @@ from category import Categories
 # 3. Parse into streams
 # 4. Format into SankeyMatic
 
-class GenericTransaction(Transaction):
+class GenericTransaction:
 
 	def __init__(self, date, description, amount, currency, category=None, parentCategory=None, tags=list(), message=None):
 		self.date: datetime = date
@@ -19,7 +19,7 @@ class GenericTransaction(Transaction):
 		self.currency: str = currency
 		self.category: Optional[str] = category
 		self.parentCategory: Optional[str] = parentCategory
-		self.tags: Optional[list] = tags
+		self.tags: list[str] = tags
 		self.message: Optional[str] = message
 
 	def __repr__(self):
@@ -32,7 +32,7 @@ class TransactionFactory:
 		self.categories = categories
 		pass
 
-	def to_generic_transaction_list(self, sourceList):
+	def to_generic_transactions(self, sourceList):
 		return [self.to_generic_transaction(source) for source in sourceList]
 
 	def to_generic_transaction(self, *argv):
@@ -49,14 +49,26 @@ class TransactionFactory:
 		return id
 
 	def _create_from_up(self, transaction : Transaction):
+		# Support for tags and categories is missing from the API Python wrapper, but there is an
+		# open pull request https://github.com/jcwillox/up-bank-api/pull/3. When this is merged,
+		# the manual creation of tags and categories here can be simplified.
+		relationships = transaction.raw["relationships"]
+		category = (relationships["category"]["data"]["id"]
+			if relationships["category"]["data"]
+            else None)
+		parentCategory = (relationships["parentCategory"]["data"]["id"]
+			if relationships["parentCategory"]["data"]
+            else None)
+		tags = [ tag["id"] for tag in relationships["tags"]["data"] ]
+
 		return GenericTransaction(
 			date = transaction.created_at,
 			description = transaction.description,
 			amount = transaction.amount,
 			currency = transaction.currency,
-			category = self._categorify(transaction.category),
-			parentCategory = self._categorify(transaction.parentCategory),
-			tags = transaction.tags,
+			category = self._categorify(category),
+			parentCategory = self._categorify(parentCategory),
+			tags = tags,
 			message = transaction.message
 		)
 

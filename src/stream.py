@@ -221,8 +221,9 @@ class TransactionCollection:
 	def collections(self):
 		return [self.income, self.expenses, self.savings]
 
-	def addTransactions(self, transactions):
-		for t in self.factory.to_generic_transaction_list(transactions):
+	def add_transactions(self, transactions):
+		generics = self.factory.to_generic_transactions(transactions)
+		for t in self.config.filter(generics):
 			type = self.config.classify(t)
 			if type is TransactionType.Income:		self.income.insert(t)
 			elif type is TransactionType.Expense:	self.expenses.insert(t)

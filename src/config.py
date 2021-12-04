@@ -76,9 +76,14 @@ class CollectionConfig:
 
 		return transaction.description
 
+	def match_by_tag(self, transaction : GenericTransaction):
+		return bool(self.tags.intersection(transaction.tags))
+
+	def match_by_account(self, transaction : GenericTransaction):
+		return transaction.description in self.accounts
+
 	def match(self, transaction : GenericTransaction):
-		return bool(self.tags.intersection(transaction.tags)) \
-			or transaction.description in self.accounts
+		return self.match_by_tag(transaction) or self.match_by_account(transaction)
 
 class IgnoreConfig(CollectionConfig):
 	def __init__(self, config):
@@ -99,11 +104,12 @@ class Config:
 		self.savings = CollectionConfig(config['collections']['savings'])
 		self._config = config
 
+		# "Interest" will always be an income stream, so populate here
 		self.income.accounts.add("Interest")
 
 	def filter(self, transactions):
-		print("%d transactions found" % transactions.count)
-		if transactions.count >= self.limit:
+		print("%d transactions found" % len(transactions))
+		if len(transactions) >= self.limit:
 			print("Warning: Reached limit for number of transactions, consider increasing in configuration yaml")
 		filtered = [t for t in transactions if not Config._isInternalTransaction(t)]
 		warn = [t for t in filtered if self.ignore.match(t)]
@@ -122,8 +128,6 @@ class Config:
 		return transaction.description.startswith(tuple(internalDescriptions))
 
 	def classify(self, transaction : GenericTransaction):
-
-		# TODO: Order of classification should be taken from the config
 		classifierOrder = {
 			self.classify_by_tag,
 			self.classify_by_category_presence,
@@ -138,19 +142,15 @@ class Config:
 		return TransactionType.Unknown
 
 	def classify_by_tag(self, transaction : GenericTransaction):
-		tags = set(transaction.tags)
-		if tags.intersection(self.ignore.tags):		return TransactionType.Ignore
-		if tags.intersection(self.income.tags):		return TransactionType.Income
-		if tags.intersection(self.expense.tags):	return TransactionType.Expense
-		if tags.intersection(self.savings.tags):	return TransactionType.Savings
+		if self.income.match_by_tag(transaction):		return TransactionType.Income
+		if self.expense.match_by_tag(transaction):		return TransactionType.Expense
+		if self.savings.match_by_tag(transaction):		return TransactionType.Savings
 		return TransactionType.Unknown
 
 	def classify_by_account(self, transaction : GenericTransaction):
-		account = transaction.description
-		if account in self.ignore.accounts:		return TransactionType.Ignore
-		if account in self.income.accounts:		return TransactionType.Income
-		if account in self.expense.accounts:	return TransactionType.Expense
-		if account in self.savings.accounts:	return TransactionType.Savings
+		if self.income.match_by_account(transaction):	return TransactionType.Income
+		if self.expense.match_by_account(transaction):	return TransactionType.Expense
+		if self.savings.match_by_account(transaction):	return TransactionType.Savings
 		return TransactionType.Unknown
 
 	def classify_by_category_presence(self, transaction : GenericTransaction):
