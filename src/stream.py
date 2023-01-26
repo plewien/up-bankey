@@ -5,10 +5,6 @@ from transaction import GenericTransaction, TransactionFactory
 import math
 
 
-def toSankeyMatic(source, target, amount):
-	return "%s [%d] %s" % (source, int(amount), target)
-
-
 class Stream:
 
 	def __init__(self, source: str, target: str, transaction: GenericTransaction=None):
@@ -19,10 +15,11 @@ class Stream:
 		self.isOther = False
 
 	def __str__(self):
+		to_sankey_matic = lambda source, target, amt : "%s [%d] %s" % (source, int(amt), target)
 		if self.total > 0:
-			return toSankeyMatic(self.source, self.target, self.total)
+			return to_sankey_matic(self.source, self.target, self.total)
 		else:
-			return toSankeyMatic(self.target, self.source, -self.total)
+			return to_sankey_matic(self.target, self.source, -self.total)
 
 	def accumulate(self, transaction : GenericTransaction):
 		self.transactions.append(transaction)
