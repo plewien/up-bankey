@@ -126,8 +126,8 @@ class Streams(dict):
 				print("* %s: %s" % (t.date.date(), t))
 
 	def consolidate(self):
-		self.consolidate_by_count(self.config.countThreshold)
-		self.consolidate_by_total(relative=self.config.relativeThreshold, absolute=self.config.absoluteThreshold)
+		self.consolidate_by_count(self.config.threshold.count)
+		self.consolidate_by_total(relative=self.config.threshold.relative, absolute=self.config.threshold.absolute)
 		pass
 
 	def round(self):

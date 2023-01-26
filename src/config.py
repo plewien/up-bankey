@@ -10,21 +10,15 @@ def readYaml(filePath : str):
 	with open(filePath, 'r') as f:
 		return yaml.safe_load(f)
 
-# Inspired by https://stackoverflow.com/questions/36831998/how-to-fill-default-parameters-in-yaml-file-using-python
-def populateConfigRecursively(input: dict, default):
-	for k in default:
-		if isinstance(default[k], dict):  # populate the sub-config
-			populateConfigRecursively(input.setdefault(k, {}), default[k])
-		else:
-			input.setdefault(k, default[k])
-
 def toDateTime(input: str):
 	if input is None:
 		return None
-	if input == "today" or input == "now":
+	if input in {"today", "now"}:
 		return datetime.now()
 	if input.endswith("ago"):
 		value, unit, _ = input.split()  # assumes format '1 year ago', etc
+		if not unit.endswith('s'):
+			unit += 's'  # plural necessary
 		return datetime.now() - relativedelta(**{unit: int(value)})
 	return parser.parse(input)
 
@@ -36,60 +30,88 @@ class TransactionType(Enum):
 	Savings     = 2
 
 
-class CollectionConfig:
+class ClassifierConfig:
 	def __init__(self, config):
+		self.collection = {}
+		for element in config:
+			self.add(element)
+
+	def __str__(self):
+		return str(self.collection)
+
+	def __repr__(self):
+		return repr(self.collection)
+
+	def __bool__(self):
+		return self.collection != {}
+
+	def add(self, classification):
+		if isinstance(classification, dict):
+			self.collection.update(classification)
+		else:
+			self.collection[classification] = None
+
+	def contains(self, name):
+		return name in self.collection
+
+	def get_alias(self, name):
+		return self.collection.get(name, None)
+
+
+class ThresholdConfig:
+	def __init__(self, config):
+		self.count = config['count']
+		self.absolute = config['value']
+		self.relative = config['percentage'] / 100
+
+
+class CollectionConfig:
+	def __init__(self, config, type):
 		self.name = config['name']
-		self.tags = CollectionConfig.make_set(config['classifiers']['tags'])
-		self.accounts = CollectionConfig.make_set(config['classifiers']['accounts'])
-		self.tagAliases: dict = CollectionConfig.make_aliases(config['classifiers']['tags'])
-		self.accountAliases: dict = CollectionConfig.make_aliases(config['classifiers']['accounts'])
-		self.countThreshold = config['threshold']['count']
-		self.absoluteThreshold = config['threshold']['value']
-		self.relativeThreshold = config['threshold']['percentage'] / 100
+		self.type = type
+		self.tags = ClassifierConfig(config['classifiers']['tags'])
+		self.accounts = ClassifierConfig(config['classifiers']['accounts'])
+		self.threshold = ThresholdConfig(config['threshold'])
 		self.outgoing = config['outgoing']
 
-	@staticmethod
-	def make_set(l : list):
-		s = set()
-		for elem in l:
-			if isinstance(elem, dict):
-				for k in elem.keys():
-					s.add(k)
-			else:
-				s.add(elem)
-		return s
+	def __str__(self):
+		return "%s(tags=%s, accounts=%s)" % (
+			self.name, self.tags, self.accounts)
 
-	@staticmethod
-	def make_aliases(l : list):
-		listOfAliases = filter(lambda e: isinstance(e, dict), l)
-		return {k:v for element in listOfAliases for (k,v) in element.items()}
+	def __repr__(self):
+		return "%s<name=%r, tags=(%r), accounts=(%r)>" % (
+			self.__class__.__name__, self.name, self.tags, self.accounts)
 
 	def get_alias(self, transaction : GenericTransaction):
-		for tag in transaction.tags:
-			alias = self.tagAliases.get(tag, None)
-			if alias is not None:
-				return alias
-
-		alias = self.accountAliases.get(transaction.description, None)
+		alias = self.get_alias_by_tag(transaction)
 		if alias is not None:
 			return alias
-
+		alias = self.get_alias_by_account(transaction)
+		if alias is not None:
+			return alias
 		return transaction.description
 
-	def match_by_tag(self, transaction : GenericTransaction):
-		return bool(self.tags.intersection(transaction.tags))
-
-	def match_by_account(self, transaction : GenericTransaction):
-		return transaction.description in self.accounts
+	def get_alias_by_tag(self, transaction : GenericTransaction):
+		return next((self.tags.get_alias(tag) for tag in transaction.tags), None)
+	
+	def get_alias_by_account(self, transaction : GenericTransaction):		
+		return self.accounts.get_alias(transaction.description)
 
 	def match(self, transaction : GenericTransaction):
 		return self.match_by_tag(transaction) or self.match_by_account(transaction)
 
+	def match_by_tag(self, transaction : GenericTransaction):
+		return any([self.tags.contains(tag) for tag in transaction.tags])
+
+	def match_by_account(self, transaction : GenericTransaction):
+		return self.accounts.contains(transaction.description)
+
 
 class IgnoreConfig(CollectionConfig):
 	def __init__(self, config):
-		self.tags = CollectionConfig.make_set(config['tags'])
-		self.accounts = CollectionConfig.make_set(config['accounts'])
+		self.name = "Ignore"
+		self.tags = ClassifierConfig(config['tags'])
+		self.accounts = ClassifierConfig(config['accounts'])
 
 
 class Config:
@@ -100,12 +122,17 @@ class Config:
 		self.limit = config['options']['sources']['up-api']['limit']
 		self.pagesize = config['options']['sources']['up-api']['pagesize']
 		self.ignore = IgnoreConfig(config['ignore'])
-		self.income = CollectionConfig(config['collections']['income'])
-		self.expense = CollectionConfig(config['collections']['expenses'])
-		self.savings = CollectionConfig(config['collections']['savings'])
+		self.income = CollectionConfig(config['collections']['income'], TransactionType.Income)
+		self.expense = CollectionConfig(config['collections']['expenses'], TransactionType.Expense)
+		self.savings = CollectionConfig(config['collections']['savings'], TransactionType.Savings)
 
 		# "Interest" will always be an income stream, so populate here
 		self.income.accounts.add("Interest")
+
+	def __str__(self):
+		return "Dates:\n %s - %s\n" % (self.since, self.until) \
+			+ "Collections:\n %s\n %s\n %s\n %s" % (
+				self.income, self.expense, self.savings, self.ignore)
 
 	def filter(self, transactions):
 		print("%d transactions found" % len(transactions))
@@ -123,10 +150,18 @@ class Config:
 	def _readConfig(path):
 		if path is None:
 			return defaultConfig
-		else:
-			config = readYaml(path)
-			populateConfigRecursively(config, defaultConfig)
-			return config
+		config = readYaml(path)
+		Config._populateRecursively(config, defaultConfig)
+		return config
+
+	# Inspired by https://stackoverflow.com/questions/36831998/how-to-fill-default-parameters-in-yaml-file-using-python
+	@staticmethod
+	def _populateRecursively(input: dict, default):
+		for k in default:
+			if isinstance(default[k], dict):  # populate the sub-config
+				Config._populateRecursively(input.setdefault(k, {}), default[k])
+			else:
+				input.setdefault(k, default[k])
 
 	@staticmethod
 	def _isInternalTransaction(transaction: GenericTransaction):
@@ -151,15 +186,15 @@ class Config:
 		return TransactionType.Unknown
 
 	def classify_by_tag(self, transaction : GenericTransaction):
-		if self.income.match_by_tag(transaction):		return TransactionType.Income
-		if self.expense.match_by_tag(transaction):		return TransactionType.Expense
-		if self.savings.match_by_tag(transaction):		return TransactionType.Savings
+		for category in (self.income, self.expense, self.savings):
+			if category.match_by_tag(transaction):
+				return category.type
 		return TransactionType.Unknown
 
 	def classify_by_account(self, transaction : GenericTransaction):
-		if self.income.match_by_account(transaction):	return TransactionType.Income
-		if self.expense.match_by_account(transaction):	return TransactionType.Expense
-		if self.savings.match_by_account(transaction):	return TransactionType.Savings
+		for category in (self.income, self.expense, self.savings):
+			if category.match_by_account(transaction):
+				return category.type
 		return TransactionType.Unknown
 
 	def classify_by_category_presence(self, transaction : GenericTransaction):
@@ -224,5 +259,6 @@ defaultConfig = {
 
 
 if __name__ == "__main__":
+	print("This is the example config:")
 	config = Config("config/example.yaml")
-	print(yaml.dump(config._config))
+	print(config)

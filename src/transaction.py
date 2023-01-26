@@ -1,3 +1,4 @@
+import csv
 from upbankapi.models import Transaction
 from datetime import datetime
 from numbers import Number
@@ -80,5 +81,13 @@ class TransactionFactory:
 			currency = "AUD"  # TODO: Default currency
 		)
 
-	def _create_from_csv(self, row):
-		return GenericTransaction(row)
+	def _create_from_csv(self, row : csv):
+		category = translate(row[self.csv.index['category']])
+		return GenericTransaction(
+			date = row[self.csv.index['date']],
+			description = row[self.csv.index['description']],
+			amount = row[self.csv.index['amount']],
+			currency = config.currency,
+			category = category.self,
+			parentCategory = category.parent
+		)
