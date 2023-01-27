@@ -33,5 +33,19 @@ class TestConfig(unittest.TestCase):
 		transaction.tags = ['tag1', 'tag2']
 		self.assertEqual(config.get_alias(transaction), 'alias')
 
+	def test_classifier_contains(self):
+		config = ClassifierConfig(defaultClassifiers['tags'])
+		self.assertEqual(config.contains('tag1'), True)
+		self.assertEqual(config.contains('tag2'), True)
+		self.assertEqual(config.contains('expected_missing_tag'), False)
+
+	def test_collection_match(self):
+		config = CollectionConfig(defaultCollection, TransactionType.Income)
+		transaction = TransactionFactory(None).to_generic_transaction(100, 'transaction')
+		self.assertEqual(config.match(transaction), False)
+		transaction.tags = ['tag1']
+		self.assertEqual(config.match(transaction), True)
+		
+
 if __name__ == '__main__':
 	unittest.main()

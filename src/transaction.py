@@ -12,7 +12,6 @@ from .category import Categories
 # 4. Format into SankeyMatic
 
 class GenericTransaction:
-
 	def __init__(self, date, description, amount, currency, category=None, parentCategory=None, tags=list(), message=None):
 		self.date: datetime = date
 		self.description: str = description
@@ -28,7 +27,6 @@ class GenericTransaction:
 
 
 class TransactionFactory:
-
 	def __init__(self, categories : Categories):
 		self.categories = categories
 		pass
