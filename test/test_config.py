@@ -1,3 +1,4 @@
+import datetime
 import unittest
 from src.config import Config, CollectionConfig, ClassifierConfig, TransactionType
 from src.transaction import GenericTransaction, TransactionFactory
@@ -20,6 +21,13 @@ defaultCollection = {
 	'threshold' : defaultThreshold
 }
 
+defaultTransaction = GenericTransaction(
+	date = datetime.now(),
+	description = 'default',
+	amount = 10,
+	currency = 'AUD',
+)
+
 class TestConfig(unittest.TestCase):
 	def test_classifier_alias(self):
 		config = ClassifierConfig(defaultClassifiers['tags'])
@@ -29,7 +37,7 @@ class TestConfig(unittest.TestCase):
 
 	def test_collection_alias(self):
 		config = CollectionConfig(defaultCollection, TransactionType.Income)
-		transaction = TransactionFactory(None).to_generic_transaction(100, 'transaction')
+		transaction = defaultTransaction
 		transaction.tags = ['tag1', 'tag2']
 		self.assertEqual(config.get_alias(transaction), 'alias')
 
@@ -41,10 +49,10 @@ class TestConfig(unittest.TestCase):
 
 	def test_collection_match(self):
 		config = CollectionConfig(defaultCollection, TransactionType.Income)
-		transaction = TransactionFactory(None).to_generic_transaction(100, 'transaction')
-		self.assertEqual(config.match(transaction), False)
+		self.assertEqual(config.match(defaultTransaction), False)
+		transaction = defaultTransaction
 		transaction.tags = ['tag1']
-		self.assertEqual(config.match(transaction), True)
+		self.assertEqual(config.match(defaultTransaction), True)
 		
 
 if __name__ == '__main__':
