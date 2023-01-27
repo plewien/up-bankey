@@ -1,7 +1,7 @@
 import yaml
 import itertools
 from enum import Enum
-from transaction import GenericTransaction
+from .transaction import GenericTransaction
 from datetime import datetime
 from dateutil import parser
 from dateutil.relativedelta import relativedelta

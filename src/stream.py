@@ -1,6 +1,6 @@
-from category import Categories
-from config import Config, TransactionType
-from transaction import GenericTransaction, TransactionFactory
+from .category import Categories
+from .config import Config, TransactionType
+from .transaction import GenericTransaction, TransactionFactory
 
 import math
 

@@ -4,7 +4,7 @@ from datetime import datetime
 from numbers import Number
 from typing import Optional
 
-from category import Categories
+from .category import Categories
 
 # 1. Obtain data from source(s)
 # 2. Read into generic transaction array

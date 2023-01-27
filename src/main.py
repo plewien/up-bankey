@@ -1,6 +1,6 @@
-from category import Categories
-from config import Config
-from stream import TransactionCollection
+from .category import Categories
+from .config import Config
+from .stream import TransactionCollection
 from upbankapi import Client, NotAuthorizedException
 import sys
 
