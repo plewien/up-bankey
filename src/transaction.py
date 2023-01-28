@@ -40,13 +40,14 @@ class TransactionFactory:
 		return None
 
 	def _create_from_up(self, transaction : Transaction):
+		category = transaction.category
 		return GenericTransaction(
 			date = transaction.created_at,
 			description = transaction.description,
 			amount = transaction.amount,
 			currency = transaction.currency,
-			category = transaction.category.category().name if transaction.category else None,
-			parentCategory = transaction.category.parent.category().name if transaction.category and transaction.category.parent else None,
+			category = category.category().name if category else None,
+			parentCategory = category.parent.category().name if category and category.parent else None,
 			tags = transaction.tags,
 			message = transaction.message
 		)
