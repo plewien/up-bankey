@@ -1,4 +1,3 @@
-from .category import Categories
 from .config import Config
 from .stream import TransactionCollection
 from upbankapi import Client, NotAuthorizedException
@@ -24,12 +23,8 @@ transactions = client.transactions(limit=config.limit,
 									since=config.since, 
 									until=config.until)
 
-# Get data for categories
-category_data = client.api("/categories")
-categories = Categories(client, category_data)
-
 # Process stream collections
-streams = TransactionCollection(config, categories)
+streams = TransactionCollection(config)
 streams.add_transactions(transactions)
 streams.cleanup()
 streams.link()

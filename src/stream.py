@@ -1,4 +1,3 @@
-from .category import Categories
 from .config import Config, TransactionType
 from .transaction import GenericTransaction, TransactionFactory
 
@@ -203,10 +202,9 @@ class ExpenseStreams(Streams):
 
 
 class TransactionCollection:
-
-	def __init__(self, config : Config, categories : Categories):
+	def __init__(self, config : Config):
 		self.config = config
-		self.factory = TransactionFactory(categories)
+		self.factory = TransactionFactory()
 		self.income = Streams(config.income)
 		self.savings = Streams(config.savings)
 		self.expenses = ExpenseStreams(config.expense)

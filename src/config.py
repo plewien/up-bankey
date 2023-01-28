@@ -186,15 +186,15 @@ class Config:
 		return TransactionType.Unknown
 
 	def classify_by_tag(self, transaction : GenericTransaction):
-		for category in (self.income, self.expense, self.savings):
-			if category.match_by_tag(transaction):
-				return category.type
+		for collection in (self.income, self.expense, self.savings):
+			if collection.match_by_tag(transaction):
+				return collection.type
 		return TransactionType.Unknown
 
 	def classify_by_account(self, transaction : GenericTransaction):
-		for category in (self.income, self.expense, self.savings):
-			if category.match_by_account(transaction):
-				return category.type
+		for collection in (self.income, self.expense, self.savings):
+			if collection.match_by_account(transaction):
+				return collection.type
 		return TransactionType.Unknown
 
 	def classify_by_category_presence(self, transaction : GenericTransaction):

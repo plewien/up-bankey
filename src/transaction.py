@@ -4,8 +4,6 @@ from datetime import datetime
 from numbers import Number
 from typing import Optional
 
-from .category import Categories
-
 # 1. Obtain data from source(s)
 # 2. Read into generic transaction array
 # 3. Parse into streams
@@ -27,8 +25,7 @@ class GenericTransaction:
 
 
 class TransactionFactory:
-	def __init__(self, categories : Categories):
-		self.categories = categories
+	def __init__(self):
 		pass
 
 	def to_generic_transactions(self, sourceList):
@@ -42,32 +39,15 @@ class TransactionFactory:
 		print("Warning: No matching transaction type found for arguments", str(argv))
 		return None
 
-	def _categorify(self, id):
-		if id in self.categories:
-			return self.categories[id].name
-		return id
-
 	def _create_from_up(self, transaction : Transaction):
-		# Support for tags and categories is missing from the API Python wrapper, but there is an
-		# open pull request https://github.com/jcwillox/up-bank-api/pull/3. When this is merged,
-		# the manual creation of tags and categories here can be simplified.
-		relationships = transaction.raw["relationships"]
-		category = (relationships["category"]["data"]["id"]
-			if relationships["category"]["data"]
-            else None)
-		parentCategory = (relationships["parentCategory"]["data"]["id"]
-			if relationships["parentCategory"]["data"]
-            else None)
-		tags = [ tag["id"] for tag in relationships["tags"]["data"] ]
-
 		return GenericTransaction(
 			date = transaction.created_at,
 			description = transaction.description,
 			amount = transaction.amount,
 			currency = transaction.currency,
-			category = self._categorify(category),
-			parentCategory = self._categorify(parentCategory),
-			tags = tags,
+			category = transaction.category.category().name if transaction.category else None,
+			parentCategory = transaction.category.parent.category().name if transaction.category and transaction.category.parent else None,
+			tags = transaction.tags,
 			message = transaction.message
 		)
 
