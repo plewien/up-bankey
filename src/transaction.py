@@ -1,5 +1,5 @@
-import csv
-from upbankapi.models import Transaction, Account, OwnershipType
+from upbankapi.models import Transaction, OwnershipType
+from .protocol import Account, Client
 from datetime import datetime
 from numbers import Number
 from typing import Optional
@@ -42,7 +42,7 @@ class GenericTransaction:
 
 
 class TransactionHelper:
-	def __init__(self, client):
+	def __init__(self, client : Client):
 		self.accounts = {account.id : account for account in client.accounts()}
 
 	@staticmethod
@@ -79,7 +79,7 @@ class TransactionHelper:
 
 
 class TransactionFactory:
-	def __init__(self, client):
+	def __init__(self, client : Client):
 		self.helper = TransactionHelper(client)
 
 	def to_generic_transactions(self, sourceList):

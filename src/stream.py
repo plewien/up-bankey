@@ -1,4 +1,6 @@
 from .config import Config, TransactionType
+from .protocol import Client, Transaction
+from typing import List
 from .transaction import GenericTransaction, TransactionFactory
 import math
 
@@ -199,7 +201,7 @@ class ExpenseStreams(Streams):
 
 
 class TransactionCollection:
-	def __init__(self, client, config : Config):
+	def __init__(self, client : Client, config : Config):
 		self.client = client
 		self.config = config
 		self.factory = TransactionFactory(client)
@@ -216,7 +218,7 @@ class TransactionCollection:
 									limit=self.config.limit, 
 									page_size=self.config.pagesize, 
 									since=self.config.since, 
-									until=self.config.until)	
+									until=self.config.until)
 		self.add_transactions(transactions)
 		self.cleanup()
 		self.link()
@@ -225,7 +227,7 @@ class TransactionCollection:
 	def collections(self):
 		return [self.income, self.expenses, self.savings]
 
-	def add_transactions(self, transactions):
+	def add_transactions(self, transactions: List[Transaction]):
 		generics = self.factory.to_generic_transactions(transactions)
 		for t in self.config.filter(generics):
 			type = self.config.classify(t)
