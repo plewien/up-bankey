@@ -1,10 +1,10 @@
 import yaml
-import itertools
 from enum import Enum
-from .transaction import GenericTransaction
 from datetime import datetime
 from dateutil import parser
 from dateutil.relativedelta import relativedelta
+
+from .transaction import GenericTransaction
 
 def readYaml(filePath : str):
 	with open(filePath, 'r') as f:
@@ -138,7 +138,7 @@ class Config:
 		print("%d transactions found" % len(transactions))
 		if len(transactions) >= self.limit:
 			print("Warning: Reached limit for number of transactions, consider increasing in configuration yaml")
-		filtered = [t for t in transactions if not Config._isInternalTransaction(t)]
+		filtered = [t for t in transactions if not t.internal]
 		warn = [t for t in filtered if self.ignore.match(t)]
 		filtered = [t for t in filtered if not self.ignore.match(t)]
 		print("%d transactions to be processed" % len(filtered))
@@ -162,14 +162,6 @@ class Config:
 				Config._populateRecursively(input.setdefault(k, {}), default[k])
 			else:
 				input.setdefault(k, default[k])
-
-	@staticmethod
-	def _isInternalTransaction(transaction: GenericTransaction):
-		actions = ['Cover', 'Transfer', 'Forward', 'Quick save transfer']
-		directions = ['from', 'to']
-		internalDescriptions = ['%s %s ' % (a, d) for a, d in itertools.product(actions, directions)]
-		internalDescriptions += ['Round Up', 'Bonus Payment']
-		return transaction.description.startswith(tuple(internalDescriptions))
 
 	def classify(self, transaction : GenericTransaction):
 		classifierOrder = [

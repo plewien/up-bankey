@@ -17,18 +17,7 @@ except NotAuthorizedException:
 	print("The token is invalid")
 	exit()
 
-# get transactions between dates
-transactions = client.transactions(limit=config.limit, 
-									page_size=config.pagesize, 
-									since=config.since, 
-									until=config.until)
-
-# Process stream collections
-streams = TransactionCollection(config)
-streams.add_transactions(transactions)
-streams.cleanup()
-streams.link()
-
-# Write the results to file
+# create and write results to file
+streams = TransactionCollection(client, config).process()
 with open('results.txt', 'w') as f:
 	print(streams, file=f)

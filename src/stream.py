@@ -1,16 +1,14 @@
 from .config import Config, TransactionType
 from .transaction import GenericTransaction, TransactionFactory
-
 import math
 
 
 class Stream:
-
 	def __init__(self, source: str, target: str, transaction: GenericTransaction=None):
 		self.source = source
 		self.target = target
 		self.transactions = [transaction] if transaction else []
-		self.total = transaction.amount if transaction else 0
+		self.total = transaction.total if transaction else 0
 		self.isOther = False
 
 	def __str__(self):
@@ -22,7 +20,7 @@ class Stream:
 
 	def accumulate(self, transaction : GenericTransaction):
 		self.transactions.append(transaction)
-		self.total += transaction.amount
+		self.total += transaction.total
 
 	def accumulate_list(self, transactions : list):
 		for transaction in transactions:
@@ -45,7 +43,6 @@ class Stream:
 
 
 class Streams(dict):
-
 	def __init__(self, config, *arg, **kw):
 		super(Streams, self).__init__(*arg, **kw)
 		self.config = config
@@ -202,9 +199,10 @@ class ExpenseStreams(Streams):
 
 
 class TransactionCollection:
-	def __init__(self, config : Config):
+	def __init__(self, client, config : Config):
+		self.client = client
 		self.config = config
-		self.factory = TransactionFactory()
+		self.factory = TransactionFactory(client)
 		self.income = Streams(config.income)
 		self.savings = Streams(config.savings)
 		self.expenses = ExpenseStreams(config.expense)
@@ -212,6 +210,17 @@ class TransactionCollection:
 
 	def __str__(self):
 		return "\n".join([str(collection) for collection in self.collections()])
+
+	def process(self):
+		transactions = self.client.transactions(
+									limit=self.config.limit, 
+									page_size=self.config.pagesize, 
+									since=self.config.since, 
+									until=self.config.until)	
+		self.add_transactions(transactions)
+		self.cleanup()
+		self.link()
+		return self
 
 	def collections(self):
 		return [self.income, self.expenses, self.savings]
@@ -232,11 +241,11 @@ class TransactionCollection:
 			collection.validate()
 			collection.consolidate()
 			collection.round()
-		pass
+		return self
 
 	def link(self):
 		difference = self.income.total() + self.expenses.total() + self.savings.total()
 		self.savings.insert(self.factory.to_generic_transaction(-difference, "Bank Account"))
 		self.income.insert(self.factory.to_generic_transaction(self.expenses.total(), self.expenses.name))
 		self.income.insert(self.factory.to_generic_transaction(self.savings.total(), self.savings.name))
-		pass
+		return self
