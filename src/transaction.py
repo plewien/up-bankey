@@ -3,7 +3,7 @@ from .protocol import Transaction
 from datetime import datetime
 from typing import Optional, List, Mapping
 from enum import Enum
-
+import copy
 
 AccountType = Enum('AccountType', ['JOINT', 'PERSONAL', 'EXTERNAL'])
 
@@ -33,6 +33,11 @@ class GenericTransaction(Transaction):
 	def __repr__(self):
 		return f"<Transaction {self.date}: {self.amount} {self.currency} [{self.description}]>"
 
+	def __eq__(self, other) -> bool:
+		if type(other) is type(self):
+			return self.__dict__ == other.__dict__ or self.__dict__ == other.flipped().__dict__
+		return False
+
 	@property
 	def total(self) -> float:
 		return self.amount # TODO: Determine split
@@ -40,10 +45,12 @@ class GenericTransaction(Transaction):
 	@property
 	def internal(self) -> bool:
 		return self.source == self.destination and self.source in (AccountType.JOINT, AccountType.PERSONAL)
-	
-	@property
-	def requires_splitting(self) -> bool:
-		return {self.source, self.destination} == {AccountType.PERSONAL, AccountType.JOINT}
+
+	def flipped(self):
+		transaction = copy.deepcopy(self)
+		transaction.source, transaction.destination = transaction.destination, transaction.source
+		transaction.amount *= -1
+		return transaction
 
 
 class TransactionAliaser:
