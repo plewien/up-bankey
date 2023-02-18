@@ -19,7 +19,7 @@ class GenericTransaction(Transaction):
 			parentCategory=None,
 			tags=list(),
 			message=None):
-		self.description = description
+		self.description: str = description
 		self.amount: float = amount
 		self.currency: str = currency
 		self.date: datetime = date
