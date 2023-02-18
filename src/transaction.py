@@ -1,23 +1,28 @@
-from upbankapi.models import Transaction, OwnershipType
-from .protocol import Account, Client
+from .config import CollectionConfig, TransactionType
+from .protocol import Transaction
 from datetime import datetime
-from numbers import Number
-from typing import Optional
+from typing import Optional, List, Mapping
 from enum import Enum
 
-# 1. Obtain data from source(s)
-# 2. Read into generic transaction array
-# 3. Parse into streams
-# 4. Format into SankeyMatic
 
 AccountType = Enum('AccountType', ['JOINT', 'PERSONAL', 'EXTERNAL'])
 
-class GenericTransaction:
-	def __init__(self, date, description, amount, currency, source=None, destination=None, category=None, parentCategory=None, tags=list(), message=None):
-		self.date: datetime = date
-		self.description: str = description
+class GenericTransaction(Transaction):
+	def __init__(self,
+			description,
+			amount,
+			date=datetime.now(),
+			currency="AUD",
+			source=None,
+			destination=None,
+			category=None,
+			parentCategory=None,
+			tags=list(),
+			message=None):
+		self.description = description
 		self.amount: float = amount
 		self.currency: str = currency
+		self.date: datetime = date
 		self.source: Optional[AccountType] = source
 		self.destination: Optional[AccountType] = destination
 		self.category: Optional[str] = category
@@ -41,76 +46,81 @@ class GenericTransaction:
 		return {self.source, self.destination} == {AccountType.PERSONAL, AccountType.JOINT}
 
 
-class TransactionHelper:
-	def __init__(self, client : Client):
-		self.accounts = {account.id : account for account in client.accounts()}
+class TransactionAliaser:
+	def __init__(self, config : CollectionConfig):
+		self.config = config
 
-	@staticmethod
-	def account_type(account : Account):
-		if account.ownership_type == OwnershipType.JOINT:
-			return AccountType.JOINT
-		if account.ownership_type == OwnershipType.INDIVIDUAL:
-			return AccountType.PERSONAL
+	def get_alias(self, transaction : GenericTransaction):
+		alias = self.get_alias_by_tag(transaction)
+		if alias is not None:
+			return alias
+		alias = self.get_alias_by_account(transaction)
+		if alias is not None:
+			return alias
+		return transaction.description
 
-	def source_account_type(self, transaction : Transaction):
-		relationships = transaction._raw_response['relationships']
-		id = relationships['account']['data']['id']
-		return TransactionHelper.account_type(self.accounts[id])
-
-	def destination_account_type(self, transaction : Transaction):
-		relationships = transaction._raw_response['relationships']
-		if relationships['transferAccount']['data']:
-			id = relationships['transferAccount']['data']['id']
-			if id in self.accounts:  # Check if transaction involves some else's upbank account
-				return TransactionHelper.account_type(self.accounts[id])
-		return AccountType.EXTERNAL
-
-	@staticmethod
-	def category(transaction : Transaction):
-		return transaction.category.category().name if transaction.category else None
-
-	@staticmethod
-	def parent_category(transaction : Transaction):
-		category = transaction.category
-		if not category or not category.parent:
-			return None
-		full_category = category.parent.category()
-		return full_category.name
+	def get_alias_by_tag(self, transaction : GenericTransaction):
+		return next((self.config.tags.get_alias(tag) for tag in transaction.tags), None)
+	
+	def get_alias_by_account(self, transaction : GenericTransaction):		
+		return self.config.accounts.get_alias(transaction.description)
 
 
-class TransactionFactory:
-	def __init__(self, client : Client):
-		self.helper = TransactionHelper(client)
+class TransactionMatcher:
+	def __init__(self, config : CollectionConfig):
+		self.config = config
 
-	def to_generic_transactions(self, sourceList):
-		return [self.to_generic_transaction(source) for source in sourceList]
+	def match(self, transaction : GenericTransaction) -> bool:
+		return self.match_by_tag(transaction) or self.match_by_account(transaction)
 
-	def to_generic_transaction(self, *argv):
-		if isinstance(argv[0], Transaction):
-			return self._create_from_up(argv[0])
-		if len(argv) == 2 and isinstance(argv[0], Number) and isinstance(argv[1], str):
-			return self._create_from_value(argv[0], argv[1])
-		print("Warning: No matching transaction type found for arguments", str(argv))
-		return None
+	def match_by_tag(self, transaction : GenericTransaction) -> bool:
+		return any([self.config.tags.contains(tag) for tag in transaction.tags])
 
-	def _create_from_up(self, transaction : Transaction):
-		return GenericTransaction(
-			date = transaction.created_at,
-			description = transaction.description,
-			amount = transaction.amount,
-			currency = transaction.currency,
-			source = self.helper.source_account_type(transaction),
-			destination = self.helper.destination_account_type(transaction),
-			category = TransactionHelper.category(transaction),
-			parentCategory = TransactionHelper.parent_category(transaction),
-			tags = transaction.tags,
-			message = transaction.message
-		)
+	def match_by_account(self, transaction : GenericTransaction) -> bool:
+		return self.config.accounts.contains(transaction.description)
 
-	def _create_from_value(self, amount : float, description):
-		return GenericTransaction(
-			date = datetime.now(),
-			description = description,
-			amount = amount,
-			currency = "AUD"  # TODO: Default currency
-		)
+
+class TransactionClassifier:
+	def __init__(self, config : Mapping[TransactionType, CollectionConfig]):
+		self.matchers = {type : TransactionMatcher(collection) for type, collection in config.items()}
+
+	def classify(self, transaction : GenericTransaction) -> TransactionType:
+		classifierOrder = [
+			self.classify_by_tag,
+			self.classify_by_category_presence,
+			self.classify_by_source_and_destination,
+			self.classify_by_account,
+			self.classify_by_postive_value,
+		]
+		for classifier in classifierOrder:
+			classification = classifier(transaction)
+			if classification is not TransactionType.Unknown:
+				return classification
+		return TransactionType.Unknown
+
+	def classify_by_tag(self, transaction : GenericTransaction) -> TransactionType:
+		for type, collection in self.matchers.items():
+			if collection.match_by_tag(transaction):
+				return type
+		return TransactionType.Unknown
+
+	def classify_by_account(self, transaction : GenericTransaction) -> TransactionType:
+		for type, collection in self.matchers.items():
+			if collection.match_by_account(transaction):
+				return type
+		return TransactionType.Unknown
+
+	def classify_by_source_and_destination(self, transaction : GenericTransaction) -> TransactionType:
+		if transaction.internal:
+			return TransactionType.Ignore
+		return TransactionType.Unknown
+
+	def classify_by_category_presence(self, transaction : GenericTransaction) -> TransactionType:
+		if transaction.category:
+			return TransactionType.Expense
+		return TransactionType.Unknown
+
+	def classify_by_postive_value(self, transaction : GenericTransaction) -> TransactionType:
+		if transaction.amount > 0:
+			return TransactionType.Income
+		return TransactionType.Unknown

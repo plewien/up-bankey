@@ -9,38 +9,14 @@ class Tag(Protocol):
 
 
 class Transaction(Protocol):
-	@property
-	def _raw_response(self) -> dict:
-		...
-
-	@property
-	def created_at(self) -> datetime:
-		...
-
-	@property
-	def description(self) -> str:
-		...
-
-	@property
-	def amount(self) -> float:
-		...
-
-	@property
-	def category(self):
-		...
-
-	@property
-	def currency(self) -> str:
-		...
-
-	@property
-	def tags(self) -> List[Tag]:
-		...
-
-	@property
-	def message(self) -> Optional[str]:
-		...
-
+	_raw_response : dict
+	created_at : datetime
+	description : str
+	amount : float
+	category : Optional[str]
+	currency : str
+	tags : List[Tag]
+	message : Optional[str]
 
 class Account(Protocol):
 	@property

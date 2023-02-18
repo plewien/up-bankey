@@ -1,9 +1,10 @@
-from .config import Config, TransactionType
-from .protocol import Client, Transaction
-from typing import List
-from .transaction import GenericTransaction, TransactionFactory
-import math
+import logging as log
 
+import math
+from typing import List, Mapping
+
+from .config import CollectionConfig, TransactionType
+from .transaction import GenericTransaction, TransactionAliaser, TransactionClassifier
 
 class Stream:
 	def __init__(self, source: str, target: str, transaction: GenericTransaction=None):
@@ -45,8 +46,9 @@ class Stream:
 
 
 class Streams(dict):
-	def __init__(self, config, *arg, **kw):
+	def __init__(self, config : CollectionConfig, *arg, **kw):
 		super(Streams, self).__init__(*arg, **kw)
+		self.aliaser = TransactionAliaser(config)
 		self.config = config
 		self.name = config.name
 		pass
@@ -68,7 +70,7 @@ class Streams(dict):
 		pass
 
 	def _tosource(self, transaction):
-		return self.config.get_alias(transaction)
+		return self.aliaser.get_alias(transaction)
 
 	def rename(self, stream : Stream, source):
 		oldKey = stream.source
@@ -99,13 +101,14 @@ class Streams(dict):
 				self.rename_as_other(stream)
 
 	def consolidate_by_total(self, relative, absolute):
-		threshold = max(relative * self.total(), absolute)
+		threshold = max(relative * self.total, absolute)
 		for stream in self.copy().values():
 			if stream.isOther:
 				continue
 			if abs(stream.total) < abs(threshold):
 				self.rename_as_other(stream)
 
+	@property
 	def total(self):
 		return sum([stream.total for stream in self.values()])
 
@@ -115,21 +118,21 @@ class Streams(dict):
 	def validate(self):
 		for stream in self.values():
 			if self.config.outgoing and stream.total > 0:
-				print("Warning: Outgoing stream found withe positive total, review these transactions:" % stream.source)
+				log.warning('Outgoing stream found withe positive total, review these transactions:\n%s', stream.source)
 			elif not self.config.outgoing and stream.total < 0:
-				print("Warning: Intended income stream found with negative total, review these transactions:" % stream.source)
+				log.warning('Intended income stream found with negative total, review these transactions:\n%s', stream.source)
 			else:
 				return
 			for t in stream.transactions:
 				print("* %s: %s" % (t.date.date(), t))
 
-	def consolidate(self):
-		self.consolidate_by_count(self.config.threshold.count)
-		self.consolidate_by_total(relative=self.config.threshold.relative, absolute=self.config.threshold.absolute)
-		pass
+	def consolidate(self) -> None:
+		if self.config.threshold:
+			self.consolidate_by_count(self.config.threshold.count)
+			self.consolidate_by_total(relative=self.config.threshold.relative, absolute=self.config.threshold.absolute)
 
 	def round(self):
-		self.round_to(self.total())
+		self.round_to(self.total)
 		pass
 
 	def round_to(self, total):
@@ -155,6 +158,9 @@ class Streams(dict):
 				difference -= 1
 			else:
 				self[k].round_total(awayFromZero=False)
+
+	def as_generic_transaction(self) -> GenericTransaction:
+		return GenericTransaction(description=self.name, amount=self.total)
 
 
 class ExpenseStreams(Streams):
@@ -200,54 +206,38 @@ class ExpenseStreams(Streams):
 			group.round_to(parent.total)
 
 
-class TransactionCollection:
-	def __init__(self, client : Client, config : Config):
-		self.client = client
+class StreamCollection:
+	def __init__(self, config : Mapping[TransactionType, CollectionConfig]):
 		self.config = config
-		self.factory = TransactionFactory(client)
-		self.income = Streams(config.income)
-		self.savings = Streams(config.savings)
-		self.expenses = ExpenseStreams(config.expense)
-		pass
+		self.classifier = TransactionClassifier(config)
+		self.collections = {type : Streams(collection_config) for type, collection_config in config.items() if type is not TransactionType.Ignore}
 
 	def __str__(self):
-		return "\n".join([str(collection) for collection in self.collections()])
+		return "\n".join([str(collection) for collection in self.collections.values()])
 
-	def process(self):
-		transactions = self.client.transactions(
-									limit=self.config.limit, 
-									page_size=self.config.pagesize, 
-									since=self.config.since, 
-									until=self.config.until)
-		self.add_transactions(transactions)
-		self.cleanup()
-		self.link()
-		return self
+	def add_transactions(self, transactions: List[GenericTransaction]) -> None:
+		for transaction in transactions:
+			self.add_transaction(transaction)
 
-	def collections(self):
-		return [self.income, self.expenses, self.savings]
-
-	def add_transactions(self, transactions: List[Transaction]):
-		generics = self.factory.to_generic_transactions(transactions)
-		for t in self.config.filter(generics):
-			type = self.config.classify(t)
-			if type is TransactionType.Income:		self.income.insert(t)
-			elif type is TransactionType.Expense:	self.expenses.insert(t)
-			elif type is TransactionType.Savings:	self.savings.insert(t)
-			else:
-				print("Unmatched transaction found for", t)
-		pass
+	def add_transaction(self, transaction: GenericTransaction) -> None:
+		type = self.classifier.classify(transaction)
+		if type is TransactionType.Unknown:
+			log.warning("Unmatched transaction found for %s", transaction)
+		elif type is TransactionType.Ignore:
+			log.debug("Ignoring transaction %s", transaction)
+		else:
+			self.collections[type].insert(transaction)
 
 	def cleanup(self):
-		for collection in self.collections():
+		for collection in self.collections.values():
 			collection.validate()
 			collection.consolidate()
 			collection.round()
 		return self
 
 	def link(self):
-		difference = self.income.total() + self.expenses.total() + self.savings.total()
-		self.savings.insert(self.factory.to_generic_transaction(-difference, "Bank Account"))
-		self.income.insert(self.factory.to_generic_transaction(self.expenses.total(), self.expenses.name))
-		self.income.insert(self.factory.to_generic_transaction(self.savings.total(), self.savings.name))
+		difference = sum([collection.total for collection in self.collections.values()])
+		self.collections[TransactionType.Savings].insert(GenericTransaction(description="Bank Account", amount=-difference))
+		self.collections[TransactionType.Income].insert(self.collections[TransactionType.Income].as_generic_transaction())
+		self.collections[TransactionType.Income].insert(self.collections[TransactionType.Expense].as_generic_transaction())
 		return self

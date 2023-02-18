@@ -1,23 +1,17 @@
 from .config import Config
-from .stream import TransactionCollection
-from upbankapi import Client, NotAuthorizedException
-import sys
+from .interface import TransactionCollection
+from upbankapi import Client
 
-# generate user configuration
-if len(sys.argv) > 1:
-	config = Config(sys.argv[1])
-else:
-	config = Config()
 
 # obtain access to the Up API
-client = Client()
-try:
-	print("Authorized: " + client.ping())
-except NotAuthorizedException:
-	print("The token is invalid")
-	exit()
+config = Config()
+client = config.init_client(Client)
 
-# create and write results to file
-streams = TransactionCollection(client, config).process()
+# add transactions
+transactions = TransactionCollection(config)
+transactions.add_from_up_api(client)
+streams = transactions.as_streams()
+
+# print results
 with open('results.txt', 'w') as f:
 	print(streams, file=f)

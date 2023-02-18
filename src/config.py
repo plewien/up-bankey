@@ -1,10 +1,15 @@
+import argparse
+import logging as log
 import yaml
+
 from enum import Enum
 from datetime import datetime
 from dateutil import parser
 from dateutil.relativedelta import relativedelta
+from upbankapi import NotAuthorizedException
 
-from .transaction import GenericTransaction
+from .protocol import Client
+
 
 def readYaml(filePath : str):
 	with open(filePath, 'r') as f:
@@ -22,12 +27,13 @@ def toDateTime(input: str):
 		return datetime.now() - relativedelta(**{unit: int(value)})
 	return parser.parse(input)
 
+
 class TransactionType(Enum):
-	Unknown     = -2
-	Ignore		= -1
-	Income		= 0
-	Expense     = 1
-	Savings     = 2
+	Unknown		= 'unknown'
+	Ignore		= 'ignore'
+	Income		= 'income'
+	Expense		= 'expenses'
+	Savings		= 'savings'
 
 
 class ClassifierConfig:
@@ -66,9 +72,8 @@ class ThresholdConfig:
 
 
 class CollectionConfig:
-	def __init__(self, config, type):
+	def __init__(self, config):
 		self.name = config['name']
-		self.type = type
 		self.tags = ClassifierConfig(config['classifiers']['tags'])
 		self.accounts = ClassifierConfig(config['classifiers']['accounts'])
 		self.threshold = ThresholdConfig(config['threshold'])
@@ -82,30 +87,6 @@ class CollectionConfig:
 		return "%s<name=%r, tags=(%r), accounts=(%r)>" % (
 			self.__class__.__name__, self.name, self.tags, self.accounts)
 
-	def get_alias(self, transaction : GenericTransaction):
-		alias = self.get_alias_by_tag(transaction)
-		if alias is not None:
-			return alias
-		alias = self.get_alias_by_account(transaction)
-		if alias is not None:
-			return alias
-		return transaction.description
-
-	def get_alias_by_tag(self, transaction : GenericTransaction):
-		return next((self.tags.get_alias(tag) for tag in transaction.tags), None)
-	
-	def get_alias_by_account(self, transaction : GenericTransaction):		
-		return self.accounts.get_alias(transaction.description)
-
-	def match(self, transaction : GenericTransaction):
-		return self.match_by_tag(transaction) or self.match_by_account(transaction)
-
-	def match_by_tag(self, transaction : GenericTransaction):
-		return any([self.tags.contains(tag) for tag in transaction.tags])
-
-	def match_by_account(self, transaction : GenericTransaction):
-		return self.accounts.contains(transaction.description)
-
 
 class IgnoreConfig(CollectionConfig):
 	def __init__(self, config):
@@ -115,36 +96,47 @@ class IgnoreConfig(CollectionConfig):
 
 
 class Config:
-	def __init__(self, path=None):
-		config = Config._readConfig(path)
+	def __init__(self):
+		self.args = Config.parser().parse_args()
+		config = Config._readConfig(self.args.config)
 		self.since = toDateTime(config['options']['dates']['since'])
 		self.until = toDateTime(config['options']['dates']['until'])
 		self.limit = config['options']['sources']['up-api']['limit']
 		self.pagesize = config['options']['sources']['up-api']['pagesize']
 		self.ignore = IgnoreConfig(config['ignore'])
-		self.income = CollectionConfig(config['collections']['income'], TransactionType.Income)
-		self.expense = CollectionConfig(config['collections']['expenses'], TransactionType.Expense)
-		self.savings = CollectionConfig(config['collections']['savings'], TransactionType.Savings)
+		self.collections = {TransactionType(name) : CollectionConfig(c) for name, c in config['collections'].items()}
+		self.collections[TransactionType.Ignore] = IgnoreConfig(config['ignore'])
 
 		# "Interest" will always be an income stream, so populate here
-		self.income.accounts.add("Interest")
+		self.collections[TransactionType.Income].accounts.add("Interest")
+		self.setup()
+
+	@staticmethod
+	def parser() -> argparse.ArgumentParser:
+		parser = argparse.ArgumentParser(description='Setting the config.')
+		parser.add_argument('--config', type=str, default=None, help='Path to config.yaml file')
+		parser.add_argument('-v', '--verbose', action="store_true", help='Verbose output')
+		return parser
+	
+	def setup(self):
+		if self.args.verbose:
+			log.basicConfig(format="%(levelname)s: %(message)s", level=log.DEBUG)
+			log.info("Verbose output")
+		else:
+			log.basicConfig(format="%(levelname)s: %(message)s")
 
 	def __str__(self):
-		return "Dates:\n %s - %s\n" % (self.since, self.until) \
-			+ "Collections:\n %s\n %s\n %s\n %s" % (
-				self.income, self.expense, self.savings, self.ignore)
+		return 'Dates:\n %s - %s\n' % (self.since, self.until) \
+			+ 'Collections:' + '\n'.join(str(collection_config) for collection_config in self.collections.values())
 
-	def filter(self, transactions):
-		print("%d transactions found" % len(transactions))
-		if len(transactions) >= self.limit:
-			print("Warning: Reached limit for number of transactions, consider increasing in configuration yaml")
-		filtered = [t for t in transactions if not t.internal]
-		warn = [t for t in filtered if self.ignore.match(t)]
-		filtered = [t for t in filtered if not self.ignore.match(t)]
-		print("%d transactions to be processed" % len(filtered))
-		for t in warn:
-			print("Ignoring transaction", t)
-		return filtered
+	def init_client(self, constructor) -> Client:
+		client : Client = constructor()
+		try:
+			log.info("Authorized: " + client.ping())
+		except NotAuthorizedException:
+			log.critical("The token is invalid")
+		return client
+		
 
 	@staticmethod
 	def _readConfig(path):
@@ -162,42 +154,6 @@ class Config:
 				Config._populateRecursively(input.setdefault(k, {}), default[k])
 			else:
 				input.setdefault(k, default[k])
-
-	def classify(self, transaction : GenericTransaction):
-		classifierOrder = [
-			self.classify_by_tag,
-			self.classify_by_category_presence,
-			self.classify_by_account,
-			self.classify_by_postive_value,
-		]
-		for classifier in classifierOrder:
-			classification = classifier(transaction)
-			if classification is not TransactionType.Unknown:
-				return classification
-
-		return TransactionType.Unknown
-
-	def classify_by_tag(self, transaction : GenericTransaction):
-		for collection in (self.income, self.expense, self.savings):
-			if collection.match_by_tag(transaction):
-				return collection.type
-		return TransactionType.Unknown
-
-	def classify_by_account(self, transaction : GenericTransaction):
-		for collection in (self.income, self.expense, self.savings):
-			if collection.match_by_account(transaction):
-				return collection.type
-		return TransactionType.Unknown
-
-	def classify_by_category_presence(self, transaction : GenericTransaction):
-		if transaction.category:
-			return TransactionType.Expense
-		return TransactionType.Unknown
-
-	def classify_by_postive_value(self, transaction : GenericTransaction):
-		if transaction.amount > 0:
-			return TransactionType.Income
-		return TransactionType.Unknown
 
 
 defaultClassifier = {
