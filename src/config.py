@@ -99,6 +99,7 @@ class Config:
 	def __init__(self):
 		self.args = Config.parser().parse_args()
 		config = Config._readConfig(self.args.config)
+		self.output =  self.args.output if self.args.output else config['options']['output']
 		self.since = toDateTime(config['options']['dates']['since'])
 		self.until = toDateTime(config['options']['dates']['until'])
 		self.limit = config['options']['sources']['up-api']['limit']
@@ -115,6 +116,7 @@ class Config:
 	def parser() -> argparse.ArgumentParser:
 		parser = argparse.ArgumentParser(description='Setting the config.')
 		parser.add_argument('--config', type=str, default=None, help='Path to config.yaml file')
+		parser.add_argument('-o', '--output', type=str, default=None, help='Path to output.txt file')
 		parser.add_argument('-v', '--verbose', action="store_true", help='Verbose output')
 		return parser
 	
@@ -136,7 +138,10 @@ class Config:
 		except NotAuthorizedException:
 			log.critical("The token is invalid")
 		return client
-		
+
+	def print_to_file(self, object):
+		with open(self.output, 'w') as f:
+			print(object, file=f)
 
 	@staticmethod
 	def _readConfig(path):

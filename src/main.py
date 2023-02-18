@@ -13,5 +13,4 @@ transactions.add_from_up_api(client)
 streams = transactions.as_streams()
 
 # print results
-with open('results.txt', 'w') as f:
-	print(streams, file=f)
+config.print_to_file(streams)
