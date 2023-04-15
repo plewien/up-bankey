@@ -9,8 +9,13 @@ options:
       token: UP_TOKEN
       limit: 4000
       pagesize: 100
+      joint-account-funders:
+        me:
+          - My Other Account
+        others:
+          - My Partner's Account
 
-# Transaction Collections
+# Transaction collections
 collections:
   income:
     name: Income

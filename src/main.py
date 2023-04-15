@@ -5,7 +5,7 @@ from upbankapi import Client
 
 # obtain access to the Up API
 config = Config()
-client = config.init_client(Client)
+client = config.up_api.init_client(Client)
 
 # add transactions
 transactions = TransactionCollection(config)

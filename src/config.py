@@ -2,18 +2,16 @@ import argparse
 import logging as log
 import yaml
 
+from os import getenv
 from enum import Enum
 from datetime import datetime
 from dateutil import parser
 from dateutil.relativedelta import relativedelta
+from typing import Mapping
 from upbankapi import NotAuthorizedException
 
 from .protocol import Client
 
-
-def readYaml(filePath : str):
-	with open(filePath, 'r') as f:
-		return yaml.safe_load(f)
 
 def toDateTime(input: str):
 	if input is None:
@@ -39,8 +37,9 @@ class TransactionType(Enum):
 class ClassifierConfig:
 	def __init__(self, config):
 		self.collection = {}
-		for element in config:
-			self.add(element)
+		if config is not None:
+			for element in config:
+				self.add(element)
 
 	def __str__(self):
 		return str(self.collection)
@@ -64,6 +63,12 @@ class ClassifierConfig:
 		return self.collection.get(name, None)
 
 
+class AccountClassifierConfig(ClassifierConfig):
+	def contains(self, description):
+		# Accounts with a $ prefix are upbank accounts and may have more details in the transaction description
+		return super().contains(description) or any(item in description for item in self.collection if item.startswith('$'))
+
+
 class ThresholdConfig:
 	def __init__(self, config):
 		self.count = config['count']
@@ -75,7 +80,7 @@ class CollectionConfig:
 	def __init__(self, config):
 		self.name = config['name']
 		self.tags = ClassifierConfig(config['classifiers']['tags'])
-		self.accounts = ClassifierConfig(config['classifiers']['accounts'])
+		self.accounts = AccountClassifierConfig(config['classifiers']['accounts'])
 		self.threshold = ThresholdConfig(config['threshold'])
 		self.outgoing = config['outgoing']
 
@@ -92,25 +97,60 @@ class IgnoreConfig(CollectionConfig):
 	def __init__(self, config):
 		self.name = "Ignore"
 		self.tags = ClassifierConfig(config['tags'])
-		self.accounts = ClassifierConfig(config['accounts'])
+		self.accounts = AccountClassifierConfig(config['accounts'])
+
+
+class JointAccountConfig:
+	def __init__(self, config):
+		self.personal_accounts = AccountClassifierConfig(config['me'])
+		self.partner_accounts = AccountClassifierConfig(config['others'])
+
+
+class UpApiConfig:
+	token : str
+	limit : int
+	pagesize : int
+	joint : JointAccountConfig
+
+	def __init__(self, config):
+		self.token = getenv(config['token'] if 'token' in config else "UP_TOKEN")
+		self.limit = config['limit']
+		self.pagesize = config['pagesize']
+		if 'joint-account-funders' in config:
+			self.joint = JointAccountConfig(config['joint-account-funders'])
+
+	# TODO: Move into interface
+	def init_client(self, client_constructor):
+		try:
+			client = client_constructor(self.token)
+			log.info("Authorized: " + client.ping())
+			return client
+		except NotAuthorizedException:
+			log.critical("The token is invalid")
+			exit(1)
 
 
 class Config:
+	output : str
+	since : datetime
+	until : datetime
+	collections : Mapping[TransactionType, CollectionConfig]
+	up_api : UpApiConfig
+
 	def __init__(self):
 		self.args = Config.parser().parse_args()
-		config = Config._readConfig(self.args.config)
-		self.output =  self.args.output if self.args.output else config['options']['output']
+		config = Config._generate_valid_config(self.args.config)
+		self.output = self.args.output if self.args.output else config['options']['output']
 		self.since = toDateTime(config['options']['dates']['since'])
 		self.until = toDateTime(config['options']['dates']['until'])
-		self.limit = config['options']['sources']['up-api']['limit']
-		self.pagesize = config['options']['sources']['up-api']['pagesize']
-		self.ignore = IgnoreConfig(config['ignore'])
-		self.collections = {TransactionType(name) : CollectionConfig(c) for name, c in config['collections'].items()}
-		self.collections[TransactionType.Ignore] = IgnoreConfig(config['ignore'])
+		self.up_api = UpApiConfig(config['options']['sources']['up-api'])
+		self.collections = {TransactionType.Ignore : IgnoreConfig(config['ignore'])}
+		for name, c in config['collections'].items():
+			self.collections[TransactionType(name)] = CollectionConfig(c)
 
 		# "Interest" will always be an income stream, so populate here
 		self.collections[TransactionType.Income].accounts.add("Interest")
-		self.setup()
+		self.setup_logging()
 
 	@staticmethod
 	def parser() -> argparse.ArgumentParser:
@@ -120,7 +160,7 @@ class Config:
 		parser.add_argument('-v', '--verbose', action="store_true", help='Verbose output')
 		return parser
 	
-	def setup(self):
+	def setup_logging(self):
 		if self.args.verbose:
 			log.basicConfig(format="%(levelname)s: %(message)s", level=log.DEBUG)
 			log.info("Verbose output")
@@ -131,32 +171,23 @@ class Config:
 		return 'Dates:\n %s - %s\n' % (self.since, self.until) \
 			+ 'Collections:' + '\n'.join(str(collection_config) for collection_config in self.collections.values())
 
-	def init_client(self, constructor) -> Client:
-		client : Client = constructor()
-		try:
-			log.info("Authorized: " + client.ping())
-		except NotAuthorizedException:
-			log.critical("The token is invalid")
-		return client
-
 	def print_to_file(self, object):
 		with open(self.output, 'w') as f:
 			print(object, file=f)
 
 	@staticmethod
-	def _readConfig(path):
-		if path is None:
-			return defaultConfig
-		config = readYaml(path)
-		Config._populateRecursively(config, defaultConfig)
+	def _generate_valid_config(path):
+		with open(path, 'r') as f:
+			config = yaml.safe_load(f)
+			Config._populate_recursively(config, defaultConfig)
 		return config
 
 	# Inspired by https://stackoverflow.com/questions/36831998/how-to-fill-default-parameters-in-yaml-file-using-python
 	@staticmethod
-	def _populateRecursively(input: dict, default):
+	def _populate_recursively(input: dict, default):
 		for k in default:
 			if isinstance(default[k], dict):  # populate the sub-config
-				Config._populateRecursively(input.setdefault(k, {}), default[k])
+				Config._populate_recursively(input.setdefault(k, {}), default[k])
 			else:
 				input.setdefault(k, default[k])
 
@@ -178,13 +209,6 @@ defaultConfig = {
 		'dates': {
 			'since' : '1 year ago',
 			'until': 'today'
-		},
-		'sources': {
-			'up-api' : {
-				'token' : 'UP_TOKEN',
-				'limit' : 1000,
-				'pagesize' : 100,
-			}
 		}
 	},
 	'collections' : {

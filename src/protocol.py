@@ -8,20 +8,29 @@ class Tag(Protocol):
 	"""Label and unique identifier"""
 
 
+class CategoryBase(Protocol):
+	id : Optional[str]
+	name : str
+
+
+class Category(CategoryBase):
+	parent : Optional[CategoryBase]
+	children : List[CategoryBase]
+
+
 class Transaction(Protocol):
 	_raw_response : dict
 	created_at : datetime
 	description : str
 	amount : float
-	category : Optional[str]
+	category : Optional[Category]
 	currency : str
 	tags : List[Tag]
 	message : Optional[str]
 
+
 class Account(Protocol):
-	@property
-	def id(self):
-		...
+	id : Optional[str]
 
 	@property
 	def ownership_type(self):
@@ -35,7 +44,7 @@ class Client(Protocol):
 		*,
 		since: datetime = None,
 		until: datetime = None,
-		category: str = None,
+		category: Union[str, Category] = None,
 		limit: int = None,
 		page_size: int = DEFAULT_PAGE_SIZE,
 	): ...
@@ -45,6 +54,9 @@ class Client(Protocol):
 		*,
 		limit: int = None,
 	): ...
+
+	def categories(self) -> List[Category]:
+		...
 
 	def ping(self):
 		...
