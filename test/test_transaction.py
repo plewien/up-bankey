@@ -1,7 +1,7 @@
 import unittest
 import copy
 from src.config import CollectionConfig
-from src.transaction import GenericTransaction, TransactionAliaser, TransactionMatcher, AccountType
+from src.transaction import GenericTransaction, TransactionAliaser, TransactionFilter, AccountType
 
 defaultClassifiers = {
 	'tags': [{'tag1': 'alias'}, 'tag2'],
@@ -33,13 +33,13 @@ class TestTransaction(unittest.TestCase):
 		transaction.tags = ['tag1', 'tag2']
 		self.assertEqual(TransactionAliaser(config).get_alias(transaction), 'alias')
 
-	def test_collection_match(self):
+	def test_collection_filter(self):
 		config = CollectionConfig(defaultCollection)
-		matcher = TransactionMatcher(config)
+		filter = TransactionFilter(accounts=config.accounts, tags=config.tags)
 		transaction = copy.deepcopy(defaultTransaction)
-		self.assertEqual(matcher.match(transaction), False)
+		self.assertEqual(filter.match_any(transaction), False)
 		transaction.tags = ['tag1']
-		self.assertEqual(matcher.match(transaction), True)
+		self.assertEqual(filter.match_any(transaction), True)
 
 
 class TestGenericTransaction(unittest.TestCase):
@@ -69,7 +69,27 @@ class TestGenericTransaction(unittest.TestCase):
 			source = AccountType.EXTERNAL,
 			destination = AccountType.PERSONAL
 		)
-		self.assertEqual(transaction, transaction2)
+		self.assertTrue(transaction.matches(transaction2))
+		self.assertTrue(transaction2.matches(transaction))
+
+
+class TestTransactionAliaser(unittest.TestCase):
+	def test_alias_by_tag(self):
+		config = CollectionConfig(defaultCollection)
+		transaction = copy.deepcopy(defaultTransaction)
+		transaction.tags = ['tag1', 'tag2']
+		self.assertEqual(TransactionAliaser(config).get_alias(transaction), 'alias')
+
+	def test_alias_by_account(self):
+		config = CollectionConfig(defaultCollection)
+		transaction = copy.deepcopy(defaultTransaction)
+		transaction.description = 'account1'
+		self.assertEqual(TransactionAliaser(config).get_alias(transaction), 'alias')
+
+	def test_alias_by_description(self):
+		config = CollectionConfig(defaultCollection)
+		transaction = copy.deepcopy(defaultTransaction)
+		self.assertEqual(TransactionAliaser(config).get_alias(transaction), 'default')
 
 
 if __name__ == '__main__':

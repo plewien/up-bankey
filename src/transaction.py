@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .config import CollectionConfig, TransactionType
+from .config import AccountClassifierConfig, ClassifierConfig, CollectionConfig, TransactionType
 from .protocol import Transaction
 from datetime import datetime
 from typing import Optional, List, Mapping, Callable
@@ -71,7 +71,7 @@ class GenericTransaction(Transaction):
 
 	@property
 	def internal(self) -> bool:
-		return self.source == self.destination
+		return self.source is not None and self.source == self.destination
 
 	@property
 	def outgoing(self) -> bool:
@@ -165,20 +165,20 @@ class TransactionAliaser:
 
 
 class TransactionFilter:
-	accounts: List[str]
+	accounts: Optional[AccountClassifierConfig]
 	sources: List[AccountType]
 	destinations: List[AccountType]
 	categories: List[str]
-	tags: List[str]
+	tags: Optional[ClassifierConfig]
 	predicate: Callable[[Transaction], bool]
 
 	def __init__(self,
-			accounts=list(),
+			accounts=None,
 			sources=list(),
 			destinations=list(),
 			categories=list(),
-			tags=list(),
-			predicate=lambda _: True):
+			tags=None,
+			predicate=None):
 		self.accounts = accounts
 		self.sources = sources
 		self.destinations = destinations
@@ -200,7 +200,9 @@ class TransactionFilter:
 			return False
 		if self.categories and not self.match_by_category(transaction):
 			return False
-		return self.predicate(transaction)
+		if self.predicate and not self.predicate(transaction):
+			return False
+		return True
 
 	def match_any(self, transaction : GenericTransaction) -> bool:
 		return self.match_by_tag(transaction)			\
@@ -208,25 +210,25 @@ class TransactionFilter:
 			or self.match_by_source(transaction)		\
 			or self.match_by_destination(transaction)	\
 			or self.match_by_category(transaction)		\
-			or self.predicate(transaction)
+			or self.match_by_predicate(transaction)
 
 	def match_by_tag(self, transaction : GenericTransaction) -> bool:
-		return any([self.tags.contains(tag) for tag in transaction.tags])
+		return any(self.tags.contains(tag) for tag in transaction.tags)
 
 	def match_by_account(self, transaction : GenericTransaction) -> bool:
 		return self.accounts.contains(transaction.description)
 
 	def match_by_source(self, transaction : GenericTransaction) -> bool:
-		return self.sources.contains(transaction.source)
+		return transaction.source in self.sources
 
 	def match_by_destination(self, transaction : GenericTransaction) -> bool:
-		return self.destinations.contains(transaction.destination)
+		return transaction.destination in self.destinations
 
 	def match_by_category(self, transaction : GenericTransaction) -> bool:
-		return self.categories.contains(transaction.category)
+		return transaction.category in self.categories
 	
-	def match_by_custom_predicate(self, transaction : GenericTransaction) -> bool:
-		return self.predicate(transaction)
+	def match_by_predicate(self, transaction : GenericTransaction) -> bool:
+		return bool(self.predicate) and self.predicate(transaction)
 
 
 class TransactionClassifier:
@@ -261,6 +263,7 @@ class TransactionClassifier:
 				return type
 		return TransactionType.Unknown
 
+	# TODO: Need to filter out transactions between 2Up and Funding accounts
 	def classify_by_source_and_destination(self, transaction : GenericTransaction) -> TransactionType:
 		if transaction.internal:
 			return TransactionType.Ignore

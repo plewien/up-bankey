@@ -1,39 +1,40 @@
 import logging as log
-
 import math
+
 from typing import List, Mapping
 
 from .config import CollectionConfig, TransactionType
 from .transaction import GenericTransaction, TransactionAliaser, TransactionClassifier
 
 class Stream:
-	def __init__(self, source: str, target: str, transaction: GenericTransaction=None):
+	def __init__(self, source: str, target: str):
 		self.source = source
 		self.target = target
-		self.transactions = [transaction] if transaction else []
-		self.total = transaction.total if transaction else 0
+		self.transactions = []
 		self.isOther = False
+		self.round_away_from_zero = True
 
 	def __str__(self):
-		to_sankey_matic = lambda source, target, amt : "%s [%d] %s" % (source, int(amt), target)
+		to_sankey_matic = lambda source, target, amount : "%s [%d] %s" % (source, int(amount), target)
 		if self.total > 0:
 			return to_sankey_matic(self.source, self.target, self.total)
 		else:
 			return to_sankey_matic(self.target, self.source, -self.total)
 
-	def accumulate(self, transaction : GenericTransaction):
-		self.transactions.append(transaction)
-		self.total += transaction.total
-
-	def accumulate_list(self, transactions : list):
-		for transaction in transactions:
-			self.accumulate(transaction)
-
-	def round_total(self, awayFromZero=False):
-		if self.total > 0 and awayFromZero or self.total < 0 and not awayFromZero:
-			self.total = math.ceil(self.total)
+	@property
+	def total(self):
+		total = sum(t.total for t in self.transactions)
+		if total > 0 and self.round_away_from_zero or total < 0 and not self.round_away_from_zero:
+			return math.ceil(total)
 		else:
-			self.total = math.floor(self.total)
+			return math.floor(total)
+
+	def append(self, transaction : GenericTransaction):
+		self.transactions.append(transaction)
+
+	def append_all(self, transactions : List[GenericTransaction]):
+		for transaction in transactions:
+			self.append(transaction)
 
 	def simplify(self):
 		if self.total < 0:
@@ -45,6 +46,7 @@ class Stream:
 		return abs(self.total) < threshold
 
 
+# TODO: Convert inheritance of Stream dict to member
 class Streams(dict):
 	def __init__(self, config : CollectionConfig, *arg, **kw):
 		super(Streams, self).__init__(*arg, **kw)
@@ -60,16 +62,15 @@ class Streams(dict):
 		sort_key = lambda stream: (not stream.isOther, abs(stream.total))
 		return sorted(self.values(), key=sort_key, reverse=True)
 
-	def insert(self, transaction, source=None):
+	def insert(self, transaction : GenericTransaction, source=None):
 		if source is None:
-			source = self._tosource(transaction)
-		if source in self:
-			self[source].accumulate(transaction)
-		else:
-			self[source] = Stream(source, self.name, transaction)
+			source = self._to_source(transaction)
+		if source not in self:
+			self[source] = Stream(source, self.name)
+		self[source].append(transaction)
 		pass
 
-	def _tosource(self, transaction):
+	def _to_source(self, transaction : GenericTransaction):
 		return self.aliaser.get_alias(transaction)
 
 	def rename(self, stream : Stream, source):
@@ -79,7 +80,7 @@ class Streams(dict):
 
 		# Insert the new stream into the collection
 		if source in self:
-			self[source].accumulate_list(self[oldKey].transactions)
+			self[source].append_all(self[oldKey].transactions)
 		else:
 			self[source] = self[oldKey]
 			self[source].source = source
@@ -110,7 +111,7 @@ class Streams(dict):
 
 	@property
 	def total(self):
-		return sum([stream.total for stream in self.values()])
+		return sum(stream.total for stream in self.values())
 
 	def apply(self, apply):
 		return [apply(k, s) for k, s in self.items()]
@@ -154,10 +155,10 @@ class Streams(dict):
 
 		for k in keysSortedByCents:
 			if difference > 0:
-				self[k].round_total(awayFromZero=True)
+				self[k].round_away_from_zero = True
 				difference -= 1
 			else:
-				self[k].round_total(awayFromZero=False)
+				self[k].round_away_from_zero = False
 
 	def as_generic_transaction(self) -> GenericTransaction:
 		return GenericTransaction(description=self.name, amount=self.total)
@@ -189,7 +190,7 @@ class ExpenseStreams(Streams):
 			self.groups[group] = Streams(config)
 		self.groups[group].insert(transaction, transaction.category)
 
-	def _tosource(self, transaction):
+	def _to_source(self, transaction):
 		return transaction.parentCategory
 
 	def validate(self):
@@ -210,7 +211,14 @@ class StreamCollection:
 	def __init__(self, config : Mapping[TransactionType, CollectionConfig]):
 		self.config = config
 		self.classifier = TransactionClassifier(config)
-		self.collections = {type : Streams(collection_config) for type, collection_config in config.items() if type is not TransactionType.Ignore}
+		self.collections = {}
+		for type, collection_config in config.items():
+			if type is TransactionType.Ignore:
+				continue
+			elif type is TransactionType.Expense:
+				self.collections[type] = ExpenseStreams(collection_config)
+			else:
+				self.collections[type] = Streams(collection_config)
 
 	def __str__(self):
 		return "\n".join([str(collection) for collection in self.collections.values()])
@@ -224,7 +232,8 @@ class StreamCollection:
 		if type is TransactionType.Unknown:
 			log.warning("Unmatched transaction found for %s", transaction)
 		elif type is TransactionType.Ignore:
-			log.debug("Ignoring transaction %s", transaction)
+			if not transaction.internal:
+				log.debug("Ignoring transaction %s", transaction)
 		else:
 			self.collections[type].insert(transaction)
 
@@ -236,8 +245,8 @@ class StreamCollection:
 		return self
 
 	def link(self):
-		difference = sum([collection.total for collection in self.collections.values()])
+		difference = sum(collection.total for collection in self.collections.values())
 		self.collections[TransactionType.Savings].insert(GenericTransaction(description="Bank Account", amount=-difference))
-		self.collections[TransactionType.Income].insert(self.collections[TransactionType.Income].as_generic_transaction())
+		self.collections[TransactionType.Income].insert(self.collections[TransactionType.Savings].as_generic_transaction())
 		self.collections[TransactionType.Income].insert(self.collections[TransactionType.Expense].as_generic_transaction())
 		return self
